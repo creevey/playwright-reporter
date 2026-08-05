@@ -29,6 +29,10 @@ async function handleApiRun(runController: RunController, req: Request): Promise
   if (parsed === null) {
     return Response.json({ ok: false, error: 'Invalid request body' }, { status: 400 })
   }
+  const preparation = await runController.prepareRun()
+  if (!preparation.ok) {
+    return Response.json({ ok: false, reason: preparation.reason }, { status: 409 })
+  }
   const result = runController.start(parsed)
   if (result.ok) return Response.json(result)
   const status = result.reason === 'no-tests' ? 400 : 409

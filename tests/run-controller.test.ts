@@ -51,6 +51,7 @@ interface Fixture {
   setPlaywrightVersion: (version: string | null) => void
   setSpawnThrows: (flag: boolean) => void
   saveReportCalls: { value: number }
+  setLauncherAvailable: (value: boolean | undefined) => void
 }
 
 function createFixture(
@@ -65,6 +66,7 @@ function createFixture(
   const pendingTimers: Array<{ fireAt: number; fn: () => void }> = []
   let now = 0
   let resolveLaunch: ((cwd: string, args: string[]) => { cmd: string; args: string[] }) | null = null
+  let launcherAvailable: boolean | undefined
   const writtenTempFiles: Array<{ path: string; content: string }> = []
   const deletedTempFiles: string[] = []
   let playwrightVersion: string | null = null
@@ -102,6 +104,9 @@ function createFixture(
     resolveReporter,
     launcher: {
       mode: 'local' as const,
+      get available(): boolean | undefined {
+        return launcherAvailable
+      },
       launch: ({ ctx, playwrightArgs }: LaunchParams): LaunchSpec => {
         const resolved = resolveLaunch?.(ctx.cwd, playwrightArgs) ?? {
           cmd: 'npx',
@@ -154,6 +159,9 @@ function createFixture(
       spawnThrows = flag
     },
     saveReportCalls,
+    setLauncherAvailable: (value): void => {
+      launcherAvailable = value
+    },
   }
 }
 
@@ -280,6 +288,26 @@ describe('RunController.start', () => {
     expect(result).toEqual({ ok: false, reason: 'no-tests' })
     expect(f.spawnCalls).toHaveLength(0)
     expect(f.broadcasts).toHaveLength(0)
+  })
+
+  test('appends --update-snapshots when update is true', () => {
+    const f = createFixture(SAMPLE_CTX, () => null)
+    f.controller.start({ update: true })
+    expect(f.spawnCalls[0]!.args).toEqual([
+      'playwright',
+      'test',
+      '--config',
+      '/proj/playwright.config.ts',
+      '--update-snapshots',
+    ])
+  })
+
+  test('refuses with docker-unavailable when the launcher is unavailable', () => {
+    const f = createFixture(SAMPLE_CTX)
+    f.setLauncherAvailable(false)
+    const result = f.controller.start({})
+    expect(result).toEqual({ ok: false, reason: 'docker-unavailable' })
+    expect(f.spawnCalls).toHaveLength(0)
   })
 })
 

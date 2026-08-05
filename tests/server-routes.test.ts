@@ -46,6 +46,7 @@ function createStubRunController(
   return {
     start: () => startResult,
     stop: () => stopResult,
+    prepareRun: (): Promise<{ ok: true }> => Promise.resolve({ ok: true }),
     dispose: () => {},
     isRunning: false,
   } as unknown as RunController
@@ -1668,6 +1669,7 @@ describe('run endpoints', () => {
         return { ok: true }
       },
       stop: () => ({ ok: true }),
+      prepareRun: (): Promise<{ ok: true }> => Promise.resolve({ ok: true }),
       dispose: () => {},
       isRunning: false,
     } as unknown as RunController

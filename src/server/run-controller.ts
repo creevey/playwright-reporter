@@ -17,6 +17,7 @@ export interface RunContext {
 
 export interface RunFilters {
   tests?: RunTestDescriptor[]
+  update?: boolean
 }
 
 export type StartResult =
@@ -176,7 +177,7 @@ export class RunController {
 
     const args = ['test', '--config', ctx.configFile]
     if (reporterModule !== null) args.push('--reporter', reporterModule)
-
+    if (filters.update === true) args.push('--update-snapshots')
     if (useTestList && tests !== undefined) {
       const content = buildTestListEntries(tests, ctx.cwd).join('\n')
       const writeTemp = this.deps.writeTempFile ?? defaultWriteTempFile
@@ -226,6 +227,29 @@ export class RunController {
     return { ok: true }
   }
 
+  async prepareRun(): Promise<{ ok: true } | { ok: false; reason: 'docker-unavailable' }> {
+    const launcher = this.deps.launcher
+    if (launcher.prepare === undefined) return { ok: true }
+    const ctx = this.deps.getRunContext()
+    if (ctx === null) return { ok: true }
+    try {
+      await launcher.prepare({
+        ctx,
+        onProgress: () => {
+          // Task 4 widens this payload with mode and phase.
+          this.deps.broadcast({ type: 'run-status', data: { running: true } })
+        },
+      })
+      return { ok: true }
+    } catch (error) {
+      // Task 4 widens this payload with mode.
+      this.deps.broadcast({ type: 'run-status', data: { running: false } })
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(`[RunController] run preparation failed: ${message}`)
+      return { ok: false, reason: 'docker-unavailable' }
+    }
+  }
+
   dispose(): void {
     if (this.child === null) return
     if (this.sigkillTimer !== null) this.deps.timers.clearTimeout(this.sigkillTimer)
@@ -237,15 +261,11 @@ export class RunController {
 
   private handleChildExit(code: number | null): void {
     if (this.child === null) return
-    if (this.sigkillTimer !== null) {
-      this.deps.timers.clearTimeout(this.sigkillTimer)
-      this.sigkillTimer = null
-    }
+    if (this.sigkillTimer !== null) this.deps.timers.clearTimeout(this.sigkillTimer)
+    this.sigkillTimer = null
     this.child = null
     this.cleanupTempFile()
-    if (code !== null && code !== 0) {
-      console.warn(`[RunController] playwright test exited with code ${code}`)
-    }
+    if (code !== null && code !== 0) console.warn(`[RunController] playwright test exited with code ${code}`)
     this.deps.setReportRunning(false)
     this.deps.broadcast({ type: 'run-status', data: { running: false } })
     void this.deps.saveReport?.()
