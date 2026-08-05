@@ -122,6 +122,37 @@ If you generate a report on one operating system and then open it on another (fo
 
 For fully portable artifact loading across operating systems, run the reporter in CI mode (`ci: true`) and ship the `screenshots/` directory alongside the report JSON.
 
+## Docker Mode
+
+Run Playwright browsers inside a pinned Docker container so screenshot baselines are reproducible across machines — no local browser or system-dependency installation required.
+
+```bash
+npx crvy-rprtr --run-mode docker
+```
+
+The server still runs on your host; only `playwright test` executes in the container, against the official `mcr.microsoft.com/playwright:v<your @playwright/test version>-noble` image with your project bind-mounted. Reporters stream results back live, and approve/update flows work unchanged.
+
+| Mode             | Behavior                                                                        |
+| ---------------- | ------------------------------------------------------------------------------- |
+| `auto` (default) | Docker when a daemon is reachable, local on CI, warned local fallback otherwise |
+| `docker`         | Always Docker; runs fail fast with `docker-unavailable` when the daemon is down |
+| `local`          | Never Docker                                                                    |
+
+| Option                         | Description                                                                                                                                                                  |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--run-mode <mode>`            | `local`, `docker`, or `auto` (default: `auto`)                                                                                                                               |
+| `--docker-image <image>`       | Custom image. With a custom image, the container-side package manager is auto-detected from your lockfile (`npx` / `pnpm exec` / `yarn` / `bunx`); the image must contain it |
+| `--docker-platform <platform>` | `linux/amd64` or `linux/arm64` (default: host architecture)                                                                                                                  |
+
+Programmatic equivalents: `startServer({ runMode: 'docker', docker: { image, platform, command, extraArgs } })`. `docker.command` overrides the container-side invocation verbatim (e.g. `['pnpm', 'exec', 'playwright']`); `docker.extraArgs` appends raw `docker run` flags.
+
+Notes:
+
+- Baselines are architecture-specific. A baseline generated on Apple Silicon (arm64) will not necessarily match an amd64 CI runner; pin `--docker-platform` if your team mixes architectures.
+- If your `playwright.config.ts` uses `webServer`, that server now starts inside the container: it must bind `0.0.0.0`, and hosts it references must resolve inside the container.
+- Timezone and locale are pinned (`TZ=UTC`, `LANG=C.UTF-8`, `LC_ALL=C.UTF-8`) so date/number rendering in screenshots is stable; override via `docker.extraArgs` if you need a different locale under test.
+- The "Run & update baselines" button (▶↻) regenerates baselines inside the container, keeping generation and verification in the same image.
+
 ## Programmatic API
 
 ```ts
