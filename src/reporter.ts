@@ -54,6 +54,7 @@ export class CrvyRprtr implements Reporter {
   private isOfflineMode = false
   private runEvents: RunEvent[] = []
   private readonly ci: boolean
+  private readonly portableArtifacts = process.env.CRVY_RPRTR_PORTABLE_ARTIFACTS === '1'
   private pendingArtifacts: PendingPortableArtifact[] = []
 
   constructor(options: CrvyRprtrOptions = {}) {
@@ -140,11 +141,7 @@ export class CrvyRprtr implements Reporter {
   private resolveBrowserLabel(project: FullProject | undefined): string {
     const name = project?.name
     if (name !== undefined && name !== '') return name
-    const browserName = project?.use?.browserName
-    if (browserName !== undefined) return browserName
-    const defaultBrowserType = project?.use?.defaultBrowserType
-    if (defaultBrowserType !== undefined) return defaultBrowserType
-    return 'chromium'
+    return project?.use?.browserName ?? project?.use?.defaultBrowserType ?? 'chromium'
   }
 
   private reporterTitlePath(test: TestCase): string[] {
@@ -172,7 +169,7 @@ export class CrvyRprtr implements Reporter {
     })
   }
 
-  onTestEnd(test: TestCase, result: TestResult): void {
+  async onTestEnd(test: TestCase, result: TestResult): Promise<void> {
     const reporterTitlePath = this.testMetadata.get(test.id)?.reporterTitlePath ?? this.reporterTitlePath(test)
     const screenshotDeclarations = withResolvedVisualNames(
       extractScreenshotDeclarations(result.steps),
@@ -200,6 +197,9 @@ export class CrvyRprtr implements Reporter {
           nativeAttachments,
           eventData: data,
         })
+      } else if (this.portableArtifacts) {
+        await mkdir(this.screenshotDir, { recursive: true })
+        data.attachments = await saveAttachments(this.screenshotDir, test.id, { attachments: nativeAttachments })
       }
       this.send({ type: 'test-end', data })
     } finally {
