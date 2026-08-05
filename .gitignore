@@ -48,3 +48,11 @@ reports/
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# docker smoke fixture artifacts
+tests/fixtures/docker-smoke/node_modules/
+tests/fixtures/docker-smoke/package-lock.json
+tests/fixtures/docker-smoke/crvy-rprtr.tgz
+tests/fixtures/docker-smoke/screenshots/
+tests/fixtures/docker-smoke/report.json
+tests/fixtures/docker-smoke/test-results/

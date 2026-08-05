@@ -101,6 +101,43 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  docker-smoke:
+    name: Docker Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          submodules: recursive
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build project
+        run: bun run build
+
+      - name: Prepare fixture
+        run: |
+          npm pack --pack-destination tests/fixtures/docker-smoke
+          mv tests/fixtures/docker-smoke/crvy-rprtr-*.tgz tests/fixtures/docker-smoke/crvy-rprtr.tgz
+          cd tests/fixtures/docker-smoke && npm install
+
+      - name: Run docker smoke test
+        run: cd tests && bun test docker-smoke.test.ts
+        env:
+          CRVY_DOCKER_SMOKE: '1'
+
   build:
     name: Build
     runs-on: ubuntu-latest

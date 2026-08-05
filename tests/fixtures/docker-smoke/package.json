@@ -1,0 +1,9 @@
+{
+  "name": "crvy-rprtr-docker-smoke",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@crvy/rprtr": "file:./crvy-rprtr.tgz",
+    "@playwright/test": "1.59.0"
+  }
+}
