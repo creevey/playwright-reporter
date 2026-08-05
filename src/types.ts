@@ -96,7 +96,7 @@ export type ClientWebSocketMessage =
   | { type: 'run-end'; data: WebSocketRunEndData }
   | { type: 'sync'; data: WebSocketSyncData }
   | { type: 'approve'; data: unknown }
-  | { type: 'run-status'; data: { running: boolean } }
+  | { type: 'run-status'; data: { running: boolean; mode?: 'local' | 'docker'; phase?: string } }
 
 export interface TestBeginMessage {
   type: 'test-begin'

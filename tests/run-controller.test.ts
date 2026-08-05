@@ -189,7 +189,7 @@ describe('RunController.start', () => {
     const env = opts.env as Record<string, string | undefined>
     expect(env.STUB_ENV).toBe('1')
     expect(f.runningFlag.value).toBe(true)
-    expect(f.broadcasts).toEqual([{ type: 'run-status', data: { running: true } }])
+    expect(f.broadcasts).toEqual([{ type: 'run-status', data: { running: true, mode: 'local' } }])
     expect(f.controller.isRunning).toBe(true)
   })
 
@@ -332,8 +332,8 @@ describe('RunController child exit', () => {
     f.child.exitEmitters.forEach((cb) => cb(0))
     expect(f.runningFlag.value).toBe(false)
     expect(f.broadcasts).toEqual([
-      { type: 'run-status', data: { running: true } },
-      { type: 'run-status', data: { running: false } },
+      { type: 'run-status', data: { running: true, mode: 'local' } },
+      { type: 'run-status', data: { running: false, mode: 'local' } },
     ])
     expect(f.controller.isRunning).toBe(false)
   })
@@ -352,7 +352,7 @@ describe('RunController child exit', () => {
     f.child.errorEmitters.forEach((cb) => cb(new Error('ENOENT')))
     expect(f.runningFlag.value).toBe(false)
     expect(f.controller.isRunning).toBe(false)
-    expect(f.broadcasts).toContainEqual({ type: 'run-status', data: { running: false } })
+    expect(f.broadcasts).toContainEqual({ type: 'run-status', data: { running: false, mode: 'local' } })
   })
 
   test('cleans up exactly once when error is followed by exit', () => {
@@ -609,6 +609,6 @@ describe('RunController --test-list path', () => {
     expect(f.writtenTempFiles).toHaveLength(1)
     expect(f.deletedTempFiles).toContain(f.writtenTempFiles[0]!.path)
     expect(f.controller.isRunning).toBe(false)
-    expect(f.broadcasts).not.toContainEqual({ type: 'run-status', data: { running: true } })
+    expect(f.broadcasts).not.toContainEqual({ type: 'run-status', data: { running: true, mode: 'local' } })
   })
 })

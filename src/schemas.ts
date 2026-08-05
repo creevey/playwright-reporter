@@ -155,6 +155,8 @@ export const WebSocketMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('run-status'),
     data: z.object({
       running: z.boolean(),
+      mode: z.enum(['local', 'docker']).optional(),
+      phase: z.string().optional(),
     }),
   }),
 ])

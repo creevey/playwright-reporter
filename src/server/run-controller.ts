@@ -210,7 +210,7 @@ export class RunController {
     })
     this.deps.setReportRunning(true)
     this.deps.setRunFiltered?.(filters.tests !== undefined)
-    this.deps.broadcast({ type: 'run-status', data: { running: true } })
+    this.deps.broadcast({ type: 'run-status', data: { running: true, mode: this.deps.launcher.mode } })
     return { ok: true }
   }
 
@@ -235,15 +235,13 @@ export class RunController {
     try {
       await launcher.prepare({
         ctx,
-        onProgress: () => {
-          // Task 4 widens this payload with mode and phase.
-          this.deps.broadcast({ type: 'run-status', data: { running: true } })
+        onProgress: (phase) => {
+          this.deps.broadcast({ type: 'run-status', data: { running: true, mode: launcher.mode, phase } })
         },
       })
       return { ok: true }
     } catch (error) {
-      // Task 4 widens this payload with mode.
-      this.deps.broadcast({ type: 'run-status', data: { running: false } })
+      this.deps.broadcast({ type: 'run-status', data: { running: false, mode: launcher.mode } })
       const message = error instanceof Error ? error.message : String(error)
       console.warn(`[RunController] run preparation failed: ${message}`)
       return { ok: false, reason: 'docker-unavailable' }
@@ -267,7 +265,7 @@ export class RunController {
     this.cleanupTempFile()
     if (code !== null && code !== 0) console.warn(`[RunController] playwright test exited with code ${code}`)
     this.deps.setReportRunning(false)
-    this.deps.broadcast({ type: 'run-status', data: { running: false } })
+    this.deps.broadcast({ type: 'run-status', data: { running: false, mode: this.deps.launcher.mode } })
     void this.deps.saveReport?.()
   }
 }
