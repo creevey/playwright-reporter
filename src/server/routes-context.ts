@@ -2,13 +2,15 @@ import type { RoutesContext } from './routes.ts'
 
 type ReportDataShape = RoutesContext['reportData']
 
-interface RoutesContextOptions {
+export interface RoutesContextOptions {
   outputDir?: string
   playwrightSnapshotDir?: string
   configDir?: string
   playwrightTestDir?: string
   playwrightSnapshotPathTemplate?: string
   playwrightToHaveScreenshotPathTemplate?: string
+  runInfo?: { mode: 'local' | 'docker' }
+  containerPathMapping?: { from: string; to: string }
 }
 
 export function createRoutesContext(
@@ -36,5 +38,7 @@ export function createRoutesContext(
       playwrightToHaveScreenshotPathTemplate: options.playwrightToHaveScreenshotPathTemplate,
     },
     runContext: undefined,
+    runInfo: options.runInfo,
+    containerPathMapping: options.containerPathMapping,
   }
 }

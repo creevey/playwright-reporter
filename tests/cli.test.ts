@@ -82,6 +82,35 @@ describe('resolveCliOptions', () => {
   test('playwrightConfig is undefined when omitted', () => {
     expect(resolveCliOptions([]).playwrightConfig).toBeUndefined()
   })
+
+  test('--run-mode accepts local, docker, auto', () => {
+    expect(resolveCliOptions(['--run-mode', 'docker']).runMode).toBe('docker')
+    expect(resolveCliOptions(['--run-mode', 'local']).runMode).toBe('local')
+    expect(resolveCliOptions(['--run-mode', 'auto']).runMode).toBe('auto')
+  })
+
+  test('--run-mode rejects unknown values', () => {
+    expect(() => resolveCliOptions(['--run-mode', 'podman'])).toThrow('Invalid --run-mode')
+  })
+
+  test('runMode is undefined when omitted', () => {
+    expect(resolveCliOptions([]).runMode).toBeUndefined()
+  })
+
+  test('--docker-image and --docker-platform assemble the docker options', () => {
+    expect(resolveCliOptions(['--docker-image', 'custom/img:1', '--docker-platform', 'linux/arm64']).docker).toEqual({
+      image: 'custom/img:1',
+      platform: 'linux/arm64',
+    })
+  })
+
+  test('--docker-platform rejects unknown values', () => {
+    expect(() => resolveCliOptions(['--docker-platform', 'windows'])).toThrow('Invalid --docker-platform')
+  })
+
+  test('docker options are undefined when no docker flags are given', () => {
+    expect(resolveCliOptions([]).docker).toBeUndefined()
+  })
 })
 
 describe('help', () => {
@@ -89,6 +118,12 @@ describe('help', () => {
     expect(HELP_TEXT).toContain('Usage: crvy-rprtr')
     expect(HELP_TEXT).toContain('artifact-dir')
     for (const token of ['--port', '--screenshot-dir', '--report-path', '--output-dir', '--config', '--help']) {
+      expect(HELP_TEXT).toContain(token)
+    }
+  })
+
+  test('HELP_TEXT documents the docker flags', () => {
+    for (const token of ['--run-mode', '--docker-image', '--docker-platform']) {
       expect(HELP_TEXT).toContain(token)
     }
   })

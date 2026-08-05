@@ -253,6 +253,7 @@ export const ReportApiResponseSchema = z.object({
   isUpdateMode: z.boolean().optional(),
   isRunning: z.boolean().optional(),
   runEnabled: z.boolean().optional(),
+  runMode: z.enum(['local', 'docker']).optional(),
 })
 
 export type ReportApiResponse = z.infer<typeof ReportApiResponseSchema>

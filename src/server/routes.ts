@@ -26,6 +26,8 @@ export interface RoutesContext {
     playwrightToHaveScreenshotPathTemplate?: string
   }
   runContext?: { configFile: string; cwd: string }
+  runInfo?: { mode: 'local' | 'docker' }
+  containerPathMapping?: { from: string; to: string }
 }
 
 export { isPathWithinRoots, isWebSocketUpgradeRequest, LIVE_UPDATES_WEBSOCKET_PATH } from './utils.ts'
@@ -57,6 +59,7 @@ function handleApiReport(ctx: RoutesContext): Response {
   return Response.json({
     ...ctx.reportData,
     runEnabled: ctx.runContext !== undefined,
+    runMode: ctx.runInfo?.mode,
   })
 }
 

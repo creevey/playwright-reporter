@@ -4,6 +4,8 @@ import { parseArgs } from 'util'
 
 import { isDirectExecution } from './is-direct-execution.ts'
 import { startServer, type ServerOptions } from './server.ts'
+import type { DockerOptions } from './server/docker-launcher.ts'
+import type { RunMode } from './server/run-mode.ts'
 
 const DEFAULT_PORT = 3000
 const DEFAULT_SCREENSHOT_DIR = './screenshots'
@@ -15,6 +17,8 @@ interface ResolvedCliOptions extends ServerOptions {
   screenshotDir: string
   reportPath: string
   outputDir: string
+  runMode?: RunMode
+  docker?: DockerOptions
 }
 
 export const HELP_TEXT = `Usage: crvy-rprtr [artifact-dir] [options]
@@ -32,6 +36,9 @@ Options:
   -r, --report-path <path>      Path to report.json (default: ./report.json)
   -o, --output-dir <dir>        Playwright test output directory (default: ./test-results)
   -c, --config <path>           Path to playwright.config.ts, used for approval routing
+  --run-mode <mode>             Test run backend: local, docker, or auto (default: auto)
+  --docker-image <image>        Docker image for docker mode (default: official Playwright image matching the installed @playwright/test version)
+  --docker-platform <platform>  Container platform: linux/amd64 or linux/arm64 (default: host architecture)
   -h, --help                    Show this help message
 `
 
@@ -53,6 +60,9 @@ export function resolveCliOptions(args: string[]): ResolvedCliOptions {
       'report-path': { type: 'string', short: 'r' },
       'output-dir': { type: 'string', short: 'o' },
       config: { type: 'string', short: 'c' },
+      'run-mode': { type: 'string' },
+      'docker-image': { type: 'string' },
+      'docker-platform': { type: 'string' },
     },
   })
 
@@ -66,12 +76,27 @@ export function resolveCliOptions(args: string[]): ResolvedCliOptions {
   const screenshotDir =
     values['screenshot-dir'] ?? (artifactDir === undefined ? DEFAULT_SCREENSHOT_DIR : join(artifactDir, 'screenshots'))
 
+  const runMode = values['run-mode']
+  if (runMode !== undefined && runMode !== 'local' && runMode !== 'docker' && runMode !== 'auto') {
+    throw new TypeError(`Invalid --run-mode: ${runMode} (expected local, docker, or auto)`)
+  }
+  const dockerPlatform = values['docker-platform']
+  if (dockerPlatform !== undefined && dockerPlatform !== 'linux/amd64' && dockerPlatform !== 'linux/arm64') {
+    throw new TypeError(`Invalid --docker-platform: ${dockerPlatform} (expected linux/amd64 or linux/arm64)`)
+  }
+  const docker: DockerOptions = {}
+  if (values['docker-image'] !== undefined) docker.image = values['docker-image']
+  if (dockerPlatform !== undefined) docker.platform = dockerPlatform
+  const hasDockerOptions = values['docker-image'] !== undefined || dockerPlatform !== undefined
+
   return {
     port: parseInt(values.port ?? `${DEFAULT_PORT}`, 10),
     screenshotDir,
     reportPath,
     outputDir: values['output-dir'] ?? DEFAULT_OUTPUT_DIR,
     playwrightConfig: values.config,
+    ...(runMode === undefined ? {} : { runMode }),
+    ...(hasDockerOptions ? { docker } : {}),
   }
 }
 

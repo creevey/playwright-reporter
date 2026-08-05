@@ -13,6 +13,7 @@ import {
   type IncomingWebSocketMessage,
 } from '../schemas.ts'
 import type { TestData } from '../types.ts'
+import { type DockerOptions } from './docker-launcher.ts'
 import { fileExists, isDirectory, readJsonFile } from './file-utils.ts'
 import {
   handleTestBegin,
@@ -23,13 +24,14 @@ import {
   handleRegister,
   type HandlerContext,
 } from './handlers.ts'
+import { resolveRunBackend } from './launcher-resolver.ts'
 import { resolvePlaywrightConfig } from './playwright-config.ts'
-import { createReportPersistence, type ReportPersistence } from './report-persistence.ts'
+import { createReportPersistence } from './report-persistence.ts'
 import { createRoutesContext } from './routes-context.ts'
 import { handleHttpRequest, type RoutesContext } from './routes.ts'
-import { RunController, createRealSpawn, createRealTimers, type RunContext } from './run-controller.ts'
-import { createLocalLauncher, type RunLauncher } from './run-launcher.ts'
-import { broadcastToBrowsers } from './utils.ts'
+import { type RunLauncher } from './run-launcher.ts'
+import { type RunMode } from './run-mode.ts'
+import { createCloseHandler, createRunControllerAndHandlers } from './server-factories.ts'
 import type { RuntimeWebSocket } from './ws.ts'
 
 export interface ServerOptions {
@@ -55,6 +57,10 @@ export interface ServerOptions {
   playwrightSnapshotDir?: string
   playwrightSnapshotPathTemplate?: string
   playwrightToHaveScreenshotPathTemplate?: string
+  /** Execution backend for UI-triggered runs. Default 'auto'. */
+  runMode?: RunMode
+  /** Docker backend settings; only used when the resolved mode is 'docker'. */
+  docker?: DockerOptions
 }
 
 interface ReportData {
@@ -215,30 +221,25 @@ async function seedRunContext(routesContext: RoutesContext, options: ServerOptio
   }
 }
 
-function createServerRunController(
-  routesContext: RoutesContext,
-  wsClients: Set<RuntimeWebSocket>,
+/** Resolves the launcher + routes context (and seeds runContext) so the UI can trigger runs early. */
+async function setupRoutesContext(
+  options: ServerOptions,
   reportData: ReportData,
-  port: number,
-  setRunFiltered: (filtered: boolean) => void,
+  staticDir: string,
   saveReport: () => Promise<void>,
-  launcher: RunLauncher,
-): RunController {
-  return new RunController({
-    getRunContext: (): RunContext | null => routesContext.runContext ?? null,
+  port: number,
+): Promise<{ routesContext: RoutesContext; launcher: RunLauncher }> {
+  const { launcher, routesContextOptions } = await resolveRunBackend({
+    runMode: options.runMode,
+    docker: options.docker,
     port,
-    broadcast: (message): void => {
-      broadcastToBrowsers(wsClients, message)
-    },
-    setReportRunning: (running): void => {
-      reportData.isRunning = running
-    },
-    setRunFiltered,
-    saveReport,
-    spawn: createRealSpawn(),
-    timers: createRealTimers(),
-    launcher,
   })
+  const routesContext = createRoutesContext(reportData, staticDir, saveReport, {
+    ...options,
+    ...routesContextOptions,
+  })
+  await seedRunContext(routesContext, options)
+  return { routesContext, launcher }
 }
 
 export async function createServerApp(options: ServerOptions = {}): Promise<ServerApp> {
@@ -250,33 +251,22 @@ export async function createServerApp(options: ServerOptions = {}): Promise<Serv
   const wsClients = new Set<RuntimeWebSocket>()
   const currentRunIds = new Set<string>()
   const persistence = createReportPersistence(reportFile, reportData)
-  const routesContext = createRoutesContext(reportData, staticDir, persistence.saveReport, options)
-  // Seed runContext so the UI can trigger runs before any reporter registers.
-  await seedRunContext(routesContext, options)
-  let isFilteredRun = false
-  const launcher: RunLauncher = createLocalLauncher({ port })
-  const runController = createServerRunController(
+  const { routesContext, launcher } = await setupRoutesContext(
+    options,
+    reportData,
+    staticDir,
+    persistence.saveReport,
+    port,
+  )
+  const { runController, getHandlerContext } = createRunControllerAndHandlers(
     routesContext,
     wsClients,
     reportData,
+    currentRunIds,
     port,
-    (filtered) => {
-      isFilteredRun = filtered
-    },
-    persistence.saveReport,
+    persistence,
     launcher,
   )
-  const getHandlerContext = (): HandlerContext => ({
-    reportData,
-    wsClients,
-    currentRunIds,
-    isFilteredRun,
-    saveReport: persistence.saveReport,
-    scheduleReportSave: persistence.scheduleReportSave,
-    approvalRouting: routesContext.approvalRouting,
-    routesContext,
-    runController,
-  })
   const handleRequest = (req: Request): Promise<Response> => handleHttpRequest(routesContext, req, runController)
   const handleWebSocketMessage = createWebSocketMessageHandler(getHandlerContext)
 
@@ -289,12 +279,5 @@ export async function createServerApp(options: ServerOptions = {}): Promise<Serv
     close: createCloseHandler(persistence, runController),
     handleRequest,
     handleWebSocketMessage,
-  }
-}
-
-function createCloseHandler(persistence: ReportPersistence, runController: RunController): () => Promise<void> {
-  return async (): Promise<void> => {
-    await persistence.dispose()
-    runController.dispose()
   }
 }
