@@ -28,6 +28,7 @@ import { createReportPersistence, type ReportPersistence } from './report-persis
 import { createRoutesContext } from './routes-context.ts'
 import { handleHttpRequest, type RoutesContext } from './routes.ts'
 import { RunController, createRealSpawn, createRealTimers, type RunContext } from './run-controller.ts'
+import { createLocalLauncher, type RunLauncher } from './run-launcher.ts'
 import { broadcastToBrowsers } from './utils.ts'
 import type { RuntimeWebSocket } from './ws.ts'
 
@@ -221,6 +222,7 @@ function createServerRunController(
   port: number,
   setRunFiltered: (filtered: boolean) => void,
   saveReport: () => Promise<void>,
+  launcher: RunLauncher,
 ): RunController {
   return new RunController({
     getRunContext: (): RunContext | null => routesContext.runContext ?? null,
@@ -235,6 +237,7 @@ function createServerRunController(
     saveReport,
     spawn: createRealSpawn(),
     timers: createRealTimers(),
+    launcher,
   })
 }
 
@@ -250,8 +253,8 @@ export async function createServerApp(options: ServerOptions = {}): Promise<Serv
   const routesContext = createRoutesContext(reportData, staticDir, persistence.saveReport, options)
   // Seed runContext so the UI can trigger runs before any reporter registers.
   await seedRunContext(routesContext, options)
-
   let isFilteredRun = false
+  const launcher: RunLauncher = createLocalLauncher({ port })
   const runController = createServerRunController(
     routesContext,
     wsClients,
@@ -261,6 +264,7 @@ export async function createServerApp(options: ServerOptions = {}): Promise<Serv
       isFilteredRun = filtered
     },
     persistence.saveReport,
+    launcher,
   )
   const getHandlerContext = (): HandlerContext => ({
     reportData,

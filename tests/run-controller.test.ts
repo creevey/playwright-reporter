@@ -5,11 +5,11 @@ import {
   type ChildProcessLike,
   type RunContext,
   type RunControllerDeps,
-  resolvePlaywrightLaunch,
   resolveReporterDefault,
   gteMinor,
   buildTestListEntries,
 } from '../src/server/run-controller'
+import type { LaunchParams, LaunchSpec } from '../src/server/run-launcher'
 import type { ClientWebSocketMessage } from '../src/types'
 
 interface StubChild {
@@ -100,8 +100,16 @@ function createFixture(
       },
     },
     resolveReporter,
-    resolveLaunch: (cwd: string, args: string[]): { cmd: string; args: string[] } =>
-      resolveLaunch?.(cwd, args) ?? { cmd: 'npx', args: ['playwright', ...args] },
+    launcher: {
+      mode: 'local' as const,
+      launch: ({ ctx, playwrightArgs }: LaunchParams): LaunchSpec => {
+        const resolved = resolveLaunch?.(ctx.cwd, playwrightArgs) ?? {
+          cmd: 'npx',
+          args: ['playwright', ...playwrightArgs],
+        }
+        return { cmd: resolved.cmd, args: resolved.args, env: { STUB_ENV: '1' } }
+      },
+    },
     writeTempFile: (content: string): string => {
       const path = `/tmp/crvy-rprtr-test-list-${writtenTempFiles.length}.txt`
       writtenTempFiles.push({ path, content })
@@ -171,9 +179,7 @@ describe('RunController.start', () => {
     expect(args).toEqual(['playwright', 'test', '--config', '/proj/playwright.config.ts'])
     expect(opts.cwd).toBe('/proj')
     const env = opts.env as Record<string, string | undefined>
-    expect(env.CRVY_RPRTR_SERVER_URL).toBe('ws://localhost:3000')
-    expect(env.CI).toBeUndefined()
-    expect(env.PLAYWRIGHT_HTML_OPEN).toBe('never')
+    expect(env.STUB_ENV).toBe('1')
     expect(f.runningFlag.value).toBe(true)
     expect(f.broadcasts).toEqual([{ type: 'run-status', data: { running: true } }])
     expect(f.controller.isRunning).toBe(true)
@@ -396,20 +402,6 @@ describe('RunController.dispose', () => {
     f.controller.start({})
     f.controller.dispose()
     expect(f.child.killed).toEqual(['SIGKILL'])
-  })
-})
-
-describe('resolvePlaywrightLaunch', () => {
-  test('falls back to npx when no package manager is detectable', () => {
-    const saved = process.env.npm_config_user_agent
-    try {
-      delete process.env.npm_config_user_agent
-      const result = resolvePlaywrightLaunch('/any/cwd', ['test', '--config', 'x.ts'])
-      expect(result.cmd).toBe('npx')
-      expect(result.args).toEqual(['playwright', 'test', '--config', 'x.ts'])
-    } finally {
-      if (saved !== undefined) process.env.npm_config_user_agent = saved
-    }
   })
 })
 

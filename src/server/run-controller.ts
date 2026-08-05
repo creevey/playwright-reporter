@@ -4,11 +4,11 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 
-import { resolveCommand } from 'package-manager-detector/commands'
-import { getUserAgent } from 'package-manager-detector/detect'
-
 import type { RunTestDescriptor } from '../schemas.ts'
 import type { ClientWebSocketMessage } from '../types.ts'
+import { type RunLauncher } from './run-launcher.ts'
+
+export { resolvePlaywrightLaunch } from './run-launcher.ts'
 
 export interface RunContext {
   configFile: string
@@ -19,7 +19,9 @@ export interface RunFilters {
   tests?: RunTestDescriptor[]
 }
 
-export type StartResult = { ok: true } | { ok: false; reason: 'no-config' | 'already-running' | 'no-tests' }
+export type StartResult =
+  | { ok: true }
+  | { ok: false; reason: 'no-config' | 'already-running' | 'no-tests' | 'docker-unavailable' }
 
 export type StopResult = { ok: true } | { ok: false; reason: 'not-running' }
 
@@ -48,8 +50,8 @@ export interface RunControllerDeps {
     clearTimeout: (handle: unknown) => void
   }
   resolveReporter?: (cwd: string) => string | null
-  /** Resolves the package-manager-aware command used to launch `playwright`. Falls back to `npx`. */
-  resolveLaunch?: (cwd: string, playwrightArgs: string[]) => { cmd: string; args: string[] }
+  /** Builds the launch command and environment for a run. */
+  launcher: RunLauncher
   /** Injectable seams for the version-gated `--test-list` path (Playwright >= 1.56). */
   getPlaywrightVersion?: (cwd: string) => string | null
   writeTempFile?: (content: string) => string
@@ -61,20 +63,6 @@ const STOP_GRACE_MS = 5000
 const KNOWN_SIGNALS: Record<string, NodeJS.Signals> = {
   SIGTERM: 'SIGTERM',
   SIGKILL: 'SIGKILL',
-}
-
-/**
- * Resolves the `playwright` launch command for the project's package manager.
- * `cwd` is reserved for future cwd-based detection (`package-manager-detector`'s
- * `detect` is async in v1.x and cannot run in the synchronous `start()` path),
- * so today detection uses the synchronous `getUserAgent()`, matching Creevey's
- * spawn pattern. Falls back to `npx` when no agent is detectable.
- */
-export function resolvePlaywrightLaunch(cwd: string, playwrightArgs: string[]): { cmd: string; args: string[] } {
-  const agent = getUserAgent()
-  const resolved = agent === null ? null : resolveCommand(agent, 'execute-local', ['playwright', ...playwrightArgs])
-  if (resolved !== null) return { cmd: resolved.command, args: resolved.args }
-  return { cmd: 'npx', args: ['playwright', ...playwrightArgs] }
 }
 
 function sharedProject(tests: RunTestDescriptor[]): string | undefined {
@@ -149,17 +137,6 @@ export function resolveReporterDefault(cwd: string): string | null {
   }
 }
 
-function buildSpawnEnv(port: number): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = {}
-  for (const [key, value] of Object.entries(process.env)) {
-    if (key === 'CI') continue
-    env[key] = value
-  }
-  env.CRVY_RPRTR_SERVER_URL = `ws://localhost:${port}`
-  env.PLAYWRIGHT_HTML_OPEN = 'never'
-  return env
-}
-
 export class RunController {
   private child: ChildProcessLike | null = null
   private sigkillTimer: unknown = null
@@ -190,6 +167,7 @@ export class RunController {
     if (ctx === null) return { ok: false, reason: 'no-config' }
     if (this.child !== null) return { ok: false, reason: 'already-running' }
     if (filters.tests !== undefined && filters.tests.length === 0) return { ok: false, reason: 'no-tests' }
+    if (this.deps.launcher.available === false) return { ok: false, reason: 'docker-unavailable' }
 
     const resolveReporter = this.deps.resolveReporter ?? resolveReporterDefault
     const reporterModule = resolveReporter(ctx.cwd)
@@ -214,11 +192,10 @@ export class RunController {
       }
     }
 
-    const resolveLaunch = this.deps.resolveLaunch ?? resolvePlaywrightLaunch
-    const { cmd, args: launchArgs } = resolveLaunch(ctx.cwd, args)
+    const spec = this.deps.launcher.launch({ ctx, playwrightArgs: args })
     let child: ChildProcessLike
     try {
-      child = this.deps.spawn(cmd, launchArgs, { cwd: ctx.cwd, env: buildSpawnEnv(this.deps.port), stdio: 'inherit' })
+      child = this.deps.spawn(spec.cmd, spec.args, { cwd: ctx.cwd, env: spec.env, stdio: 'inherit' })
     } catch (err) {
       this.cleanupTempFile()
       throw err
@@ -241,7 +218,10 @@ export class RunController {
     if (this.sigkillTimer !== null) this.deps.timers.clearTimeout(this.sigkillTimer)
     this.child.kill('SIGTERM')
     this.sigkillTimer = this.deps.timers.setTimeout(() => {
-      if (this.child !== null) this.child.kill('SIGKILL')
+      if (this.child !== null) {
+        this.child.kill('SIGKILL')
+        this.deps.launcher.onForceKill?.()
+      }
     }, STOP_GRACE_MS)
     return { ok: true }
   }
@@ -251,6 +231,7 @@ export class RunController {
     if (this.sigkillTimer !== null) this.deps.timers.clearTimeout(this.sigkillTimer)
     this.sigkillTimer = null
     this.child.kill('SIGKILL')
+    this.deps.launcher.onForceKill?.()
     this.cleanupTempFile()
   }
 
