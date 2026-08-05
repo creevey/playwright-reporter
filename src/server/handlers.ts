@@ -4,6 +4,7 @@ import { applyTestBeginEvent, applyTestEndEvent, finalizeRunEvent } from '../rep
 import type { RegisterData, TestBeginData, TestEndData } from '../schemas.ts'
 import type { ClientWebSocketMessage, TestData } from '../types.ts'
 import { resolveBaselineSnapshotPath, type ApprovalRouting } from './artifact-routes.ts'
+import { rewriteContainerPath } from './docker-support.ts'
 import type { RoutesContext } from './routes.ts'
 import type { RunController } from './run-controller.ts'
 import { broadcastToBrowsers } from './utils.ts'
@@ -118,7 +119,24 @@ export function handleSync(ctx: HandlerContext): void {
   broadcastToBrowsers(ctx.wsClients, message)
 }
 
-export function handleRegister(ctx: HandlerContext, data: RegisterData): void {
+function applyContainerPathMapping(rawData: RegisterData, mapping: { from: string; to: string }): RegisterData {
+  return {
+    ...rawData,
+    playwrightSnapshotDir:
+      rawData.playwrightSnapshotDir === undefined
+        ? undefined
+        : rewriteContainerPath(rawData.playwrightSnapshotDir, mapping),
+    playwrightTestDir:
+      rawData.playwrightTestDir === undefined ? undefined : rewriteContainerPath(rawData.playwrightTestDir, mapping),
+    configFile: rawData.configFile === undefined ? undefined : rewriteContainerPath(rawData.configFile, mapping),
+    cwd: rawData.cwd === undefined ? undefined : rewriteContainerPath(rawData.cwd, mapping),
+  }
+}
+
+export function handleRegister(ctx: HandlerContext, rawData: RegisterData): void {
+  const mapping = ctx.routesContext.containerPathMapping
+  const data: RegisterData = mapping === undefined ? rawData : applyContainerPathMapping(rawData, mapping)
+
   const roots: string[] = []
   if (data.playwrightSnapshotDir !== undefined && data.playwrightSnapshotDir !== '') {
     roots.push(data.playwrightSnapshotDir)
