@@ -86,7 +86,7 @@ export function gteMinor(version: string, major: number, minor: number): boolean
 }
 
 /** Reads the installed `@playwright/test` version from cwd; null when unresolvable (→ positional fallback). */
-function resolvePlaywrightVersion(cwd: string): string | null {
+export function resolvePlaywrightVersion(cwd: string): string | null {
   try {
     const req = createRequire(join(cwd, 'package.json'))
     const pkgPath = req.resolve('@playwright/test/package.json')
