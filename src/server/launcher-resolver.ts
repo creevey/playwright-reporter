@@ -29,6 +29,9 @@ export async function resolveRunBackend(options: ResolveRunBackendOptions): Prom
     runMode: options.runMode ?? 'auto',
     isCI: isCI(),
     probeDocker: () => probeDockerDaemon(dockerExec),
+    warn: (message) => {
+      console.warn(`[crvy-rprtr] ${message}`)
+    },
   })
   const launcher: RunLauncher =
     resolvedRunMode === 'docker'
