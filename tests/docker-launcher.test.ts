@@ -156,9 +156,75 @@ describe('DockerLauncher.launch', () => {
       'playwright',
       'test',
       '--config',
-      '/proj/playwright.config.ts',
+      `${DOCKER_WORK_DIR}/playwright.config.ts`,
     ])
     expect(spec.env.CI).toBeUndefined()
+  })
+
+  test('rewrites --config under ctx.cwd to the container work dir', async () => {
+    const { launcher } = makeLauncher()
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    const args = launcher.launch({
+      ctx: CTX,
+      playwrightArgs: ['test', '--config', '/proj/nested/playwright.config.ts'],
+    }).args
+    const idx = args.indexOf('--config')
+    expect(idx).toBeGreaterThan(-1)
+    expect(args[idx + 1]).toBe(`${DOCKER_WORK_DIR}/nested/playwright.config.ts`)
+  })
+
+  test('rewrites --reporter under ctx.cwd to the container work dir', async () => {
+    const { launcher } = makeLauncher()
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    const args = launcher.launch({
+      ctx: CTX,
+      playwrightArgs: ['test', '--reporter', '/proj/node_modules/@crvy/rprtr/dist/reporter.cjs'],
+    }).args
+    const idx = args.indexOf('--reporter')
+    expect(idx).toBeGreaterThan(-1)
+    expect(args[idx + 1]).toBe(`${DOCKER_WORK_DIR}/node_modules/@crvy/rprtr/dist/reporter.cjs`)
+  })
+
+  test('replaces --reporter outside ctx.cwd with the bare @crvy/rprtr specifier', async () => {
+    const { launcher } = makeLauncher()
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    const args = launcher.launch({
+      ctx: CTX,
+      playwrightArgs: ['test', '--reporter', '/usr/local/share/@crvy/rprtr/dist/reporter.cjs'],
+    }).args
+    const idx = args.indexOf('--reporter')
+    expect(idx).toBeGreaterThan(-1)
+    expect(args[idx + 1]).toBe('@crvy/rprtr')
+  })
+
+  test('bind-mounts --test-list outside ctx.cwd read-only at the same path before the image', async () => {
+    const { launcher } = makeLauncher()
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    const args = launcher.launch({
+      ctx: CTX,
+      playwrightArgs: ['test', '--test-list', '/tmp/crvy-rprtr-test-list-123.txt'],
+    }).args
+    const idx = args.indexOf('--test-list')
+    expect(idx).toBeGreaterThan(-1)
+    expect(args[idx + 1]).toBe('/tmp/crvy-rprtr-test-list-123.txt')
+    const mount = '/tmp/crvy-rprtr-test-list-123.txt:/tmp/crvy-rprtr-test-list-123.txt:ro'
+    const mountIdx = args.indexOf(mount)
+    expect(mountIdx).toBeGreaterThan(-1)
+    expect(args[mountIdx - 1]).toBe('-v')
+    const imageIdx = args.indexOf('mcr.microsoft.com/playwright:v1.59.0-noble')
+    expect(mountIdx).toBeLessThan(imageIdx)
+  })
+
+  test('passes non-path positional and flag args through unchanged', async () => {
+    const { launcher } = makeLauncher()
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    const args = launcher.launch({
+      ctx: CTX,
+      playwrightArgs: ['test', 'tests/foo.spec.ts:3', '--project=chromium', '--update-snapshots'],
+    }).args
+    const imageIdx = args.indexOf('mcr.microsoft.com/playwright:v1.59.0-noble')
+    const tail = args.slice(imageIdx + 3)
+    expect(tail).toEqual(['test', 'tests/foo.spec.ts:3', '--project=chromium', '--update-snapshots'])
   })
 
   test('passes user env through as name-only -e flags and filters the denylist', async () => {

@@ -7,6 +7,7 @@ import {
   pullDockerImage,
   resolveContainerCommand,
   resolveDockerImage,
+  rewriteContainerPath,
   DEFAULT_CONTAINER_COMMAND,
   type DetectAgent,
   type DockerExec,
@@ -125,7 +126,52 @@ async function prepareDocker(
   }
 }
 
+/** Bare specifier substituted when `--reporter` resolved outside the project on the host. */
+const REPORTER_BARE_SPECIFIER = '@crvy/rprtr'
+
+/** Module-private: path-valued playwright arg flags emitted by run-controller in space-separated form. */
+const PATH_FLAGS = new Set(['--config', '--reporter', '--test-list'])
+
+interface RewrittenArgs {
+  args: string[]
+  /** Extra `-v <path>:<path>:ro` host paths (e.g. host tmpdir files) the container must see verbatim. */
+  bindMounts: string[]
+}
+
+/**
+ * Module-private: translates host paths in playwright args so they resolve inside the container.
+ * - `--config` / `--reporter` under ctx.cwd → `${workDir}/...`.
+ * - `--reporter` outside ctx.cwd (resolved from the server's own package) → bare `@crvy/rprtr`.
+ * - `--test-list` outside ctx.cwd (host tmpdir) → value unchanged, plus a same-path read-only bind mount.
+ */
+function rewritePlaywrightArgs(playwrightArgs: string[], ctx: RunContext, workDir: string): RewrittenArgs {
+  const args: string[] = []
+  const bindMounts: string[] = []
+  for (let i = 0; i < playwrightArgs.length; i++) {
+    const flag = playwrightArgs[i]!
+    if (!PATH_FLAGS.has(flag)) {
+      args.push(flag)
+      continue
+    }
+    const value = playwrightArgs[i + 1]
+    if (value === undefined) break
+    i += 1
+    args.push(flag)
+    const rewritten = rewriteContainerPath(value, { from: ctx.cwd, to: workDir })
+    if (flag === '--reporter' && rewritten === value) {
+      args.push(REPORTER_BARE_SPECIFIER)
+    } else if (flag === '--test-list' && rewritten === value) {
+      args.push(value)
+      bindMounts.push(`${value}:${value}:ro`)
+    } else {
+      args.push(rewritten)
+    }
+  }
+  return { args, bindMounts }
+}
+
 function buildDockerRunArgs(ctx: RunContext, playwrightArgs: string[], deps: LaunchDeps): string[] {
+  const { args: rewrittenArgs, bindMounts } = rewritePlaywrightArgs(playwrightArgs, ctx, deps.workDir)
   const args = [
     'run',
     '--rm',
@@ -140,6 +186,9 @@ function buildDockerRunArgs(ctx: RunContext, playwrightArgs: string[], deps: Lau
     args.push('--platform', deps.docker.platform)
   }
   args.push('-v', `${ctx.cwd}:${deps.workDir}:rw`, '-w', deps.workDir)
+  for (const mount of bindMounts) {
+    args.push('-v', mount)
+  }
   args.push('-e', `CRVY_RPRTR_SERVER_URL=ws://${DOCKER_HOST_GATEWAY}:${deps.port}`)
   args.push('-e', 'CRVY_RPRTR_PORTABLE_ARTIFACTS=1')
   args.push('-e', 'TZ=UTC', '-e', 'LANG=C.UTF-8', '-e', 'LC_ALL=C.UTF-8')
@@ -149,7 +198,7 @@ function buildDockerRunArgs(ctx: RunContext, playwrightArgs: string[], deps: Lau
     args.push('-e', key)
   }
   if (deps.docker?.extraArgs !== undefined) args.push(...deps.docker.extraArgs)
-  args.push(deps.image, ...deps.command, 'playwright', ...playwrightArgs)
+  args.push(deps.image, ...deps.command, 'playwright', ...rewrittenArgs)
   return args
 }
 
