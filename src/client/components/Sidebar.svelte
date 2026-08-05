@@ -23,15 +23,19 @@
     onToggle: (path: string[], checked: boolean) => void;
     onStart: () => void;
     onStop: () => void;
+    onUpdate: () => void;
     onRun: (item: CrvyRprtrSuite | CrvyRprtrTest) => void;
     onApprove: () => void;
     onNext: () => void;
     onApproveAll: () => void;
+    runMode?: 'local' | 'docker';
+    isPreparing?: boolean;
   }
 
   let {
     tests, selectedId, focusedPath, isReport, isRunning, isUpdateMode, approvalEnabled, approvalMessage, runEnabled, runMessage, filter, canApprove,
-    onFilterChange, onSelect, onOpen, onToggle, onStart, onStop, onRun, onApprove, onNext, onApproveAll
+    onFilterChange, onSelect, onOpen, onToggle, onStart, onStop, onUpdate, onRun, onApprove, onNext, onApproveAll,
+    runMode, isPreparing,
   }: Props = $props();
 
   let filterInput = $state('');
@@ -84,6 +88,11 @@
     <div class="flex justify-between items-start">
       <div>
         <h1 class="m-0 mb-2 text-base font-normal text-fg-bright">Crvy Rprtr</h1>
+        {#if runEnabled && runMode !== undefined}
+          <div class="text-[10px] uppercase tracking-wide text-fg-muted mb-1">
+            {runMode}
+          </div>
+        {/if}
         {#if isUpdateMode}
           <div class="text-xs mb-2 px-2 py-1 text-success bg-success/10 rounded-sm">
             Review and approve screenshots
@@ -121,7 +130,7 @@
         </div>
       </div>
       {#if runEnabled}
-        <div class="mt-1">
+        <div class="mt-1 flex gap-1">
           {#if isRunning}
             <button
               class="size-9 flex items-center justify-center bg-surface-input border border-edge rounded text-error cursor-pointer text-sm transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-accent"
@@ -130,10 +139,18 @@
             >&#9632;</button>
           {:else}
             <button
-              class="size-9 flex items-center justify-center bg-surface-input border border-edge rounded text-success cursor-pointer text-sm transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-accent"
+              class="size-9 flex items-center justify-center bg-surface-input border border-edge rounded text-success cursor-pointer text-sm transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed"
               aria-label="Start tests"
+              disabled={isPreparing === true}
               onclick={onStart}
             >&#9654;</button>
+            <button
+              class="size-9 flex items-center justify-center bg-surface-input border border-edge rounded text-success cursor-pointer text-sm transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Run and update baselines"
+              title="Run & update baselines"
+              disabled={isPreparing === true}
+              onclick={onUpdate}
+            >&#9654;&#8635;</button>
           {/if}
         </div>
       {/if}

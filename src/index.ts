@@ -16,6 +16,7 @@ interface InitialState {
   approvalMessage?: string
   runEnabled: boolean
   isRunning: boolean
+  runMode?: 'local' | 'docker'
 }
 
 function loadBootstrapData(): InitialState | null {
@@ -64,6 +65,7 @@ async function loadReportData(): Promise<InitialState> {
     approvalEnabled: true,
     runEnabled: parsed.runEnabled ?? false,
     isRunning: parsed.isRunning ?? false,
+    runMode: parsed.runMode,
   }
 }
 
@@ -99,6 +101,7 @@ mount(App, {
     approvalMessage: initialState.approvalMessage,
     runEnabled: initialState.runEnabled,
     isRunning: initialState.isRunning,
+    runMode: initialState.runMode,
     onApprove: handleApprove,
     onApproveAll: handleApproveAll,
   },

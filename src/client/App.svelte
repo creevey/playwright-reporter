@@ -41,6 +41,7 @@
 
   interface RunFilters {
     tests?: RunTestDescriptor[];
+    update?: boolean;
   }
 
   interface Props {
@@ -52,17 +53,19 @@
     approvalMessage?: string;
     runEnabled: boolean;
     isRunning: boolean;
+    runMode?: 'local' | 'docker';
     onApprove: (id: string, retry: number, image: string) => Promise<ApprovalResult>;
     onApproveAll: () => Promise<BulkApprovalResult>;
   }
 
-  let { initialTests, isReport, isUpdateMode, liveUpdates, approvalEnabled, approvalMessage, runEnabled, isRunning: initialIsRunning, onApprove, onApproveAll }: Props = $props();
+  let { initialTests, isReport, isUpdateMode, liveUpdates, approvalEnabled, approvalMessage, runEnabled, isRunning: initialIsRunning, runMode, onApprove, onApproveAll }: Props = $props();
 
   // svelte-ignore state_referenced_locally — intentionally capture initial value for local mutation
   let tests = $state(initialTests);
   // svelte-ignore state_referenced_locally — intentionally capture initial value for local mutation
   let isRunning = $state(initialIsRunning);
   let runMessage = $state<string | null>(null);
+  let isPreparing = $state(false);
   let runSnapshot: Map<string, TestStatus | undefined> | null = null;
   let runEventIds: Set<string> = new Set();
   let openedTestPath = $state<string[]>([]);
@@ -367,6 +370,10 @@
     await fetch('/api/stop', { method: 'POST' });
   }
 
+  async function handleUpdate(): Promise<void> {
+    await handleStart({ update: true })
+  }
+
   function handleImageChange(name: string): void {
     imageName = name;
   }
@@ -438,6 +445,12 @@
           // No-op: approvals go through HTTP /api/approve.
           break;
         case 'run-status': {
+          if (msg.data.phase === 'pulling') {
+            isPreparing = true;
+            runMessage = 'Pulling Docker image…';
+            break;
+          }
+          isPreparing = false;
           if (msg.data.running) {
             isRunning = true;
             runMessage = null;
@@ -477,6 +490,9 @@
     onOpen={handleSuiteOpen}
     onToggle={handleSuiteToggle}
     onStart={handleStart}
+    onUpdate={handleUpdate}
+    {isPreparing}
+    {runMode}
     onStop={handleStop}
     onRun={handleRunItem}
     onApprove={handleApproveAndGoNext}
