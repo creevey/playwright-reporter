@@ -227,6 +227,52 @@ describe('DockerLauncher.launch', () => {
     expect(tail).toEqual(['test', 'tests/foo.spec.ts:3', '--project=chromium', '--update-snapshots'])
   })
 
+  test('passes equals-form path flags through unrewritten (run-controller never emits them)', async () => {
+    const { launcher } = makeLauncher()
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    const args = launcher.launch({
+      ctx: CTX,
+      playwrightArgs: ['test', '--config=/proj/playwright.config.ts'],
+    }).args
+    expect(args).toContain('--config=/proj/playwright.config.ts')
+    expect(args).not.toContain(`${DOCKER_WORK_DIR}/playwright.config.ts`)
+  })
+
+  test('rewrites each occurrence of a repeated path flag', async () => {
+    const { launcher } = makeLauncher()
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    const args = launcher.launch({
+      ctx: CTX,
+      playwrightArgs: ['test', '--config', '/proj/a.config.ts', '--config', '/proj/nested/b.config.ts'],
+    }).args
+    const first = args.indexOf('--config')
+    const second = args.indexOf('--config', first + 1)
+    expect(args[first + 1]).toBe(`${DOCKER_WORK_DIR}/a.config.ts`)
+    expect(args[second + 1]).toBe(`${DOCKER_WORK_DIR}/nested/b.config.ts`)
+  })
+
+  test('drops a dangling trailing path flag (run-controller never emits one)', async () => {
+    const { launcher } = makeLauncher()
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    const args = launcher.launch({ ctx: CTX, playwrightArgs: ['test', '--config'] }).args
+    expect(args).not.toContain('--config')
+  })
+
+  test('warns and passes through when --config resolves outside ctx.cwd', async () => {
+    const warnings: string[] = []
+    const { launcher } = makeLauncher({ warn: (m) => warnings.push(m) })
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    const args = launcher.launch({
+      ctx: CTX,
+      playwrightArgs: ['test', '--config', '/etc/elsewhere/playwright.config.ts'],
+    }).args
+    const idx = args.indexOf('--config')
+    expect(args[idx + 1]).toBe('/etc/elsewhere/playwright.config.ts')
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('--config')
+    expect(warnings[0]).toContain('/etc/elsewhere/playwright.config.ts')
+  })
+
   test('passes user env through as name-only -e flags and filters the denylist', async () => {
     const { launcher } = makeLauncher({
       env: {

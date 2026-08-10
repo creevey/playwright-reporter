@@ -51,6 +51,26 @@ describe('handleRunRoutes docker-unavailable mapping', () => {
     expect(response!.status).toBe(409)
     expect(await response!.json()).toEqual({ ok: false, reason: 'docker-unavailable' })
   })
+
+  test('returns 409 and skips start when prepareRun reports docker-unavailable', async () => {
+    const fakeController = {
+      start: (): never => {
+        throw new Error('start must not be called when preparation fails')
+      },
+      stop: (): { ok: false; reason: 'not-running' } => ({ ok: false as const, reason: 'not-running' as const }),
+      prepareRun: (): Promise<{ ok: false; reason: 'docker-unavailable' }> =>
+        Promise.resolve({ ok: false as const, reason: 'docker-unavailable' as const }),
+    }
+    const response = await handleRunRoutes(
+      '/api/run',
+      'POST',
+      fakeController as unknown as RunController,
+      new Request('http://localhost/api/run', { method: 'POST', body: '{}' }),
+    )
+    expect(response).not.toBeNull()
+    expect(response!.status).toBe(409)
+    expect(await response!.json()).toEqual({ ok: false, reason: 'docker-unavailable' })
+  })
 })
 
 describe('WebSocketMessageSchema run-status', () => {

@@ -15,7 +15,7 @@ interface ServerFactoryReportData {
   screenshotDir: string
 }
 
-export function createServerRunController(
+function createServerRunController(
   routesContext: RoutesContext,
   wsClients: Set<RuntimeWebSocket>,
   reportData: ServerFactoryReportData,

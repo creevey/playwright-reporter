@@ -122,12 +122,18 @@ export const detectProjectAgent: DetectAgent = async (cwd) => {
   }
 }
 
+/** Maps an absolute path prefix in the container's mount namespace to its host equivalent. */
+export interface ContainerPathMapping {
+  from: string
+  to: string
+}
+
 /**
  * Maps an absolute path from the container's mount namespace back to the host.
  * Only exact matches and direct descendants of `mapping.from` are rewritten;
  * prefix lookalikes like `/workspace` are left untouched.
  */
-export function rewriteContainerPath(path: string, mapping: { from: string; to: string }): string {
+export function rewriteContainerPath(path: string, mapping: ContainerPathMapping): string {
   if (path === mapping.from) return mapping.to
   if (path.startsWith(`${mapping.from}/`)) return mapping.to + path.slice(mapping.from.length)
   return path

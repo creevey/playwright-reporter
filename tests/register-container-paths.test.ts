@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
+import type { ContainerPathMapping } from '../src/server/docker-support'
 import { handleRegister, type HandlerContext } from '../src/server/handlers'
 import type { RoutesContext } from '../src/server/routes'
 import type { RunController } from '../src/server/run-controller'
 
-function createCtx(mapping?: { from: string; to: string }): { ctx: HandlerContext; routesContext: RoutesContext } {
+function createCtx(mapping?: ContainerPathMapping): { ctx: HandlerContext; routesContext: RoutesContext } {
   const routesContext: RoutesContext = {
     reportData: {
       isRunning: false,

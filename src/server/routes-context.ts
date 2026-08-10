@@ -1,3 +1,4 @@
+import type { ContainerPathMapping } from './docker-support.ts'
 import type { RoutesContext } from './routes.ts'
 
 type ReportDataShape = RoutesContext['reportData']
@@ -10,7 +11,7 @@ export interface RoutesContextOptions {
   playwrightSnapshotPathTemplate?: string
   playwrightToHaveScreenshotPathTemplate?: string
   runInfo?: { mode: 'local' | 'docker' }
-  containerPathMapping?: { from: string; to: string }
+  containerPathMapping?: ContainerPathMapping
 }
 
 export function createRoutesContext(

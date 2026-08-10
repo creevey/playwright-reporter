@@ -4,7 +4,7 @@ import { applyTestBeginEvent, applyTestEndEvent, finalizeRunEvent } from '../rep
 import type { RegisterData, TestBeginData, TestEndData } from '../schemas.ts'
 import type { ClientWebSocketMessage, TestData } from '../types.ts'
 import { resolveBaselineSnapshotPath, type ApprovalRouting } from './artifact-routes.ts'
-import { rewriteContainerPath } from './docker-support.ts'
+import { rewriteContainerPath, type ContainerPathMapping } from './docker-support.ts'
 import type { RoutesContext } from './routes.ts'
 import type { RunController } from './run-controller.ts'
 import { broadcastToBrowsers } from './utils.ts'
@@ -119,7 +119,7 @@ export function handleSync(ctx: HandlerContext): void {
   broadcastToBrowsers(ctx.wsClients, message)
 }
 
-function applyContainerPathMapping(rawData: RegisterData, mapping: { from: string; to: string }): RegisterData {
+function applyContainerPathMapping(rawData: RegisterData, mapping: ContainerPathMapping): RegisterData {
   return {
     ...rawData,
     playwrightSnapshotDir:

@@ -28,6 +28,8 @@ export interface DockerOptions {
   extraArgs?: string[]
 }
 
+type Warn = (message: string) => void
+
 export interface DockerLauncherOptions {
   port: number
   docker?: DockerOptions
@@ -37,7 +39,7 @@ export interface DockerLauncherOptions {
   env?: Record<string, string | undefined>
   containerName?: string
   workDir?: string
-  warn?: (message: string) => void
+  warn?: Warn
 }
 
 /** Never propagated into the container: host-specific or launcher-pinned values. */
@@ -70,7 +72,7 @@ interface PrepareDeps {
   docker?: DockerOptions
   getPlaywrightVersion: (cwd: string) => string | null
   detectAgent?: DetectAgent
-  warn: (message: string) => void
+  warn: Warn
 }
 
 interface LaunchDeps {
@@ -81,6 +83,7 @@ interface LaunchDeps {
   env: Record<string, string | undefined>
   image: string
   command: readonly string[]
+  warn: Warn
 }
 
 function defaultWarn(message: string): void {
@@ -143,8 +146,10 @@ interface RewrittenArgs {
  * - `--config` / `--reporter` under ctx.cwd → `${workDir}/...`.
  * - `--reporter` outside ctx.cwd (resolved from the server's own package) → bare `@crvy/rprtr`.
  * - `--test-list` outside ctx.cwd (host tmpdir) → value unchanged, plus a same-path read-only bind mount.
+ * - `--config` outside ctx.cwd → value unchanged plus a warning (the container cannot see it).
+ * Equals-form (`--flag=value`) and dangling trailing flags are NOT rewritten; run-controller emits pairs only.
  */
-function rewritePlaywrightArgs(playwrightArgs: string[], ctx: RunContext, workDir: string): RewrittenArgs {
+function rewritePlaywrightArgs(playwrightArgs: string[], ctx: RunContext, workDir: string, warn: Warn): RewrittenArgs {
   const args: string[] = []
   const bindMounts: string[] = []
   for (let i = 0; i < playwrightArgs.length; i++) {
@@ -164,6 +169,9 @@ function rewritePlaywrightArgs(playwrightArgs: string[], ctx: RunContext, workDi
       args.push(value)
       bindMounts.push(`${value}:${value}:ro`)
     } else {
+      if (flag === '--config' && rewritten === value) {
+        warn(`--config "${value}" is outside the project directory and will not resolve inside the container.`)
+      }
       args.push(rewritten)
     }
   }
@@ -171,7 +179,7 @@ function rewritePlaywrightArgs(playwrightArgs: string[], ctx: RunContext, workDi
 }
 
 function buildDockerRunArgs(ctx: RunContext, playwrightArgs: string[], deps: LaunchDeps): string[] {
-  const { args: rewrittenArgs, bindMounts } = rewritePlaywrightArgs(playwrightArgs, ctx, deps.workDir)
+  const { args: rewrittenArgs, bindMounts } = rewritePlaywrightArgs(playwrightArgs, ctx, deps.workDir, deps.warn)
   const args = [
     'run',
     '--rm',
@@ -190,8 +198,7 @@ function buildDockerRunArgs(ctx: RunContext, playwrightArgs: string[], deps: Lau
     args.push('-v', mount)
   }
   args.push('-e', `CRVY_RPRTR_SERVER_URL=ws://${DOCKER_HOST_GATEWAY}:${deps.port}`)
-  args.push('-e', 'CRVY_RPRTR_PORTABLE_ARTIFACTS=1')
-  args.push('-e', 'TZ=UTC', '-e', 'LANG=C.UTF-8', '-e', 'LC_ALL=C.UTF-8')
+  args.push('-e', 'CRVY_RPRTR_PORTABLE_ARTIFACTS=1', '-e', 'TZ=UTC', '-e', 'LANG=C.UTF-8', '-e', 'LC_ALL=C.UTF-8')
   args.push('-e', 'PLAYWRIGHT_HTML_OPEN=never')
   for (const [key, value] of Object.entries(deps.env)) {
     if (ENV_DENYLIST.has(key) || value === undefined) continue
@@ -218,18 +225,13 @@ interface LauncherDeps {
   baseEnv: Record<string, string | undefined>
   getVersion: (cwd: string) => string | null
   detectAgent: DetectAgent | undefined
-  warn: (message: string) => void
+  warn: Warn
   docker?: DockerOptions
   port: number
 }
 
 function createState(docker?: DockerOptions): LauncherState {
-  return {
-    available: undefined,
-    prepared: null,
-    image: null,
-    command: docker?.command ?? DEFAULT_CONTAINER_COMMAND,
-  }
+  return { available: undefined, prepared: null, image: null, command: docker?.command ?? DEFAULT_CONTAINER_COMMAND }
 }
 
 function buildLauncher(state: LauncherState, deps: LauncherDeps): RunLauncher {
@@ -270,6 +272,7 @@ function buildLauncher(state: LauncherState, deps: LauncherDeps): RunLauncher {
         env: deps.baseEnv,
         image,
         command: state.command,
+        warn: deps.warn,
       })
       return { cmd: 'docker', args, env: stripCi(deps.baseEnv) }
     },

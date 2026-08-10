@@ -39,6 +39,8 @@ if (isPlaywright()) {
         screenshotDir,
         offlineReportPath,
         reportHtmlPath,
+        // Artifact emission is CI-gated in the reporter; pin it so the spec is hermetic.
+        ci: true,
       })
 
       type TestReporter = {

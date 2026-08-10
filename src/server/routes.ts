@@ -3,6 +3,7 @@ import { join } from 'path'
 import { ApproveRequestBodySchema, safeParse } from '../schemas.ts'
 import type { TestData } from '../types.ts'
 import { handleArtifactRoute, resolveBaselineSnapshotPath } from './artifact-routes.ts'
+import type { ContainerPathMapping } from './docker-support.ts'
 import { copyFilePortable, respondWithFile } from './file-utils.ts'
 import type { RunController } from './run-controller.ts'
 import { handleRunRoutes } from './run-routes.ts'
@@ -27,7 +28,7 @@ export interface RoutesContext {
   }
   runContext?: { configFile: string; cwd: string }
   runInfo?: { mode: 'local' | 'docker' }
-  containerPathMapping?: { from: string; to: string }
+  containerPathMapping?: ContainerPathMapping
 }
 
 export { isPathWithinRoots, isWebSocketUpgradeRequest, LIVE_UPDATES_WEBSOCKET_PATH } from './utils.ts'
