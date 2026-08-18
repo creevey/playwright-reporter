@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { createHash } from 'crypto'
 import { existsSync } from 'fs'
 import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
@@ -12,6 +13,8 @@ const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2G0K0AAAAASUVORK5CYII=',
   'base64',
 )
+// Artifact files are content-addressed: the on-disk name is the sha1 of the contents.
+const TINY_PNG_ARTIFACT_NAME = `${createHash('sha1').update(TINY_PNG).digest('hex')}.png`
 
 interface ReceivedMessage {
   type: string
@@ -115,9 +118,9 @@ describe('portable artifacts mode', () => {
       const attachments = testEnd!.data.attachments ?? []
       expect(attachments).toHaveLength(1)
       // Relative path under screenshotDir — no absolute container/host path leaks.
-      expect(attachments[0]!.path).toBe('test-1/actual.png')
+      expect(attachments[0]!.path).toBe(`test-1/${TINY_PNG_ARTIFACT_NAME}`)
       expect(attachments[0]!.path.startsWith('/')).toBe(false)
-      expect(existsSync(join(screenshotDir, 'test-1', 'actual.png'))).toBe(true)
+      expect(existsSync(join(screenshotDir, 'test-1', TINY_PNG_ARTIFACT_NAME))).toBe(true)
     } finally {
       for (const ws of sockets) ws.close()
       wss.close()

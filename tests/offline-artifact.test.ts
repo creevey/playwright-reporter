@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { createHash } from 'crypto'
 import { existsSync } from 'fs'
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
@@ -8,6 +9,8 @@ const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2G0K0AAAAASUVORK5CYII=',
   'base64',
 )
+// Artifact files are content-addressed: the on-disk name is the sha1 of the contents.
+const TINY_PNG_ARTIFACT_NAME = `${createHash('sha1').update(TINY_PNG).digest('hex')}.png`
 
 describe('Report artifact generation', () => {
   let tempDir = ''
@@ -103,7 +106,7 @@ describe('Report artifact generation', () => {
 
     expect(html).toContain('<style>')
     expect(html).toContain('<script type="module">')
-    expect(html).toContain('./screenshots/test-1/view-actual.png')
+    expect(html).toContain(`./screenshots/test-1/${TINY_PNG_ARTIFACT_NAME}`)
     expect(html).toContain('This artifact is read-only')
     expect(html).toContain('"approvalEnabled":false')
   })

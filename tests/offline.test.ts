@@ -1,4 +1,5 @@
 import { describe, test, expect, afterEach, beforeEach } from 'bun:test'
+import { createHash } from 'crypto'
 import { existsSync, unlinkSync } from 'fs'
 import { mkdir, readFile, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
@@ -20,6 +21,12 @@ function createProject(name: string): { name: string; testDir: string; snapshotD
     testDir: TEST_DIR,
     snapshotDir: TEST_DIR,
   }
+}
+
+// Artifact files are content-addressed (Playwright HTML-reporter pattern): the on-disk
+// name is the sha1 of the file contents, so paths stay pure ASCII on any static host.
+function contentHashName(content: string): string {
+  return `${createHash('sha1').update(content).digest('hex')}.png`
 }
 
 function assertValidOfflineReport(value: unknown): OfflineReport {
@@ -385,7 +392,7 @@ describe('Offline Mode', () => {
     expect(attachments).toMatchObject([
       {
         name: 'header-expected.png',
-        path: 'test-visual-named-copy/header-expected.png',
+        path: `test-visual-named-copy/${contentHashName('baseline image')}`,
       },
     ])
   })
@@ -446,7 +453,7 @@ describe('Offline Mode', () => {
     expect(attachments).toMatchObject([
       {
         name: 'header-expected.png',
-        path: 'test-visual-custom-template/header-expected.png',
+        path: `test-visual-custom-template/${contentHashName('baseline image')}`,
       },
     ])
   })
@@ -519,7 +526,7 @@ describe('Offline Mode', () => {
     expect(attachments).toMatchObject([
       {
         name: 'Suite-visual-pass-1-expected.png',
-        path: 'test-visual-unnamed-copy/Suite-visual-pass-1-expected.png',
+        path: `test-visual-unnamed-copy/${contentHashName('baseline image')}`,
       },
     ])
   })
@@ -577,13 +584,13 @@ describe('Offline Mode', () => {
     expect(attachments).toMatchObject([
       {
         name: 'header-expected.png',
-        path: 'test-visual-empty-project/header-expected.png',
+        path: `test-visual-empty-project/${contentHashName('baseline image')}`,
       },
     ])
   })
 
   // Migrated: copying + path rewriting now happens at onEnd (CI mode). Filesystem check retained.
-  test('copies a named screenshot baseline for multi-segment screenshot names without flattening the path', async () => {
+  test('copies a named screenshot baseline for multi-segment screenshot names', async () => {
     const { CrvyRprtr } = await import('../src/reporter')
 
     const reporter = new CrvyRprtr({
@@ -637,14 +644,16 @@ describe('Offline Mode', () => {
     expect(data.attachments).toMatchObject([
       {
         name: 'dir/header-expected.png',
-        path: 'test-visual-nested-copy/dir/header-expected.png',
+        path: `test-visual-nested-copy/${contentHashName('baseline image')}`,
       },
     ])
-    expect(existsSync(join(TEST_SCREENSHOT_DIR, 'test-visual-nested-copy', 'dir', 'header-expected.png'))).toBe(true)
+    expect(existsSync(join(TEST_SCREENSHOT_DIR, 'test-visual-nested-copy', contentHashName('baseline image')))).toBe(
+      true,
+    )
   })
 
   // Migrated: copying + path rewriting now happens at onEnd (CI mode). Filesystem check retained.
-  test('uses filesystem-safe encoded copied baseline paths for unsafe slash-named screenshot segments', async () => {
+  test('stores copied baselines under ASCII content-hash paths for unsafe characters in screenshot names', async () => {
     const { CrvyRprtr } = await import('../src/reporter')
 
     const reporter = new CrvyRprtr({
@@ -698,16 +707,16 @@ describe('Offline Mode', () => {
     expect(data.attachments).toMatchObject([
       {
         name: 'dir/header:mobile-expected.png',
-        path: 'test-visual-nested-unsafe-copy/dir/header%3Amobile-expected.png',
+        path: `test-visual-nested-unsafe-copy/${contentHashName('baseline image')}`,
       },
     ])
     expect(
-      existsSync(join(TEST_SCREENSHOT_DIR, 'test-visual-nested-unsafe-copy', 'dir', 'header%3Amobile-expected.png')),
+      existsSync(join(TEST_SCREENSHOT_DIR, 'test-visual-nested-unsafe-copy', contentHashName('baseline image'))),
     ).toBe(true)
   })
 
   // Migrated: copying + path rewriting now happens at onEnd (CI mode). Filesystem checks retained.
-  test('neutralizes traversal segments in copied baseline paths for slash-named screenshots', async () => {
+  test('keeps traversal-named copied baselines inside the per-test screenshot directory', async () => {
     const { CrvyRprtr } = await import('../src/reporter')
 
     const reporter = new CrvyRprtr({
@@ -759,17 +768,17 @@ describe('Offline Mode', () => {
     expect(attachments).toMatchObject([
       {
         name: '../header-expected.png',
-        path: 'test-visual-traversal-copy/+dotdot+/header-expected.png',
+        path: `test-visual-traversal-copy/${contentHashName('baseline image')}`,
       },
     ])
-    expect(existsSync(join(TEST_SCREENSHOT_DIR, 'test-visual-traversal-copy', '+dotdot+', 'header-expected.png'))).toBe(
+    expect(existsSync(join(TEST_SCREENSHOT_DIR, 'test-visual-traversal-copy', contentHashName('baseline image')))).toBe(
       true,
     )
     expect(existsSync(join(TEST_SCREENSHOT_DIR, 'header-expected.png'))).toBe(false)
   })
 
   // Migrated: attachment saving + path rewriting now happens at onEnd (CI mode). Filesystem checks retained.
-  test('keeps traversal-named PNG attachments inside the per-test screenshot directory with sentinel artifact paths', async () => {
+  test('keeps traversal-named PNG attachments inside the per-test screenshot directory', async () => {
     const { CrvyRprtr } = await import('../src/reporter')
 
     const reporter = new CrvyRprtr({
@@ -823,15 +832,17 @@ describe('Offline Mode', () => {
     expect(attachments).toMatchObject([
       {
         name: '../header.png',
-        path: 'test-attachment-traversal-save/+dotdot+/header.png',
+        path: `test-attachment-traversal-save/${contentHashName('attachment image')}`,
       },
     ])
-    expect(existsSync(join(TEST_SCREENSHOT_DIR, 'test-attachment-traversal-save', '+dotdot+', 'header.png'))).toBe(true)
+    expect(
+      existsSync(join(TEST_SCREENSHOT_DIR, 'test-attachment-traversal-save', contentHashName('attachment image'))),
+    ).toBe(true)
     expect(existsSync(join(TEST_SCREENSHOT_DIR, 'header.png'))).toBe(false)
   })
 
   // Migrated: copying + path rewriting now happens at onEnd (CI mode).
-  test('keeps encoded slash-named copied baseline paths distinct from flat safe-name paths that used to collide', async () => {
+  test('keeps slash-named and flat copied baselines distinct under content-hash paths', async () => {
     const { CrvyRprtr } = await import('../src/reporter')
 
     const reporter = new CrvyRprtr({
@@ -915,8 +926,8 @@ describe('Offline Mode', () => {
         ),
       )
 
-    expect(attachmentPaths).toContain('test-visual-collision-proof-nested/dir/header%3Amobile-expected.png')
-    expect(attachmentPaths).toContain('test-visual-collision-proof-flat/dir-header-mobile-expected.png')
+    expect(attachmentPaths).toContain(`test-visual-collision-proof-nested/${contentHashName('nested baseline image')}`)
+    expect(attachmentPaths).toContain(`test-visual-collision-proof-flat/${contentHashName('flat baseline image')}`)
   })
 
   // Migrated: copying + path rewriting now happens at onEnd (CI mode).
@@ -974,9 +985,92 @@ describe('Offline Mode', () => {
     expect(data.attachments).toMatchObject([
       {
         name: 'dir/header-expected.png',
-        path: 'test-visual-windows-nested-copy/dir/header-expected.png',
+        path: `test-visual-windows-nested-copy/${contentHashName('baseline image')}`,
       },
     ])
+  })
+
+  // Regression: Cyrillic (non-ASCII) names previously produced percent-encoded artifact
+  // filenames that standard static file servers (e.g. GitLab Pages) could not resolve.
+  test('stores artifacts under ASCII content-hash paths for Cyrillic screenshot names', async () => {
+    const { CrvyRprtr } = await import('../src/reporter')
+
+    const reporter = new CrvyRprtr({
+      screenshotDir: TEST_SCREENSHOT_DIR,
+      reportHtmlPath: TEST_ARTIFACT_PATH,
+      ci: true,
+    })
+
+    await mkdir(TEST_SNAPSHOT_DIR, { recursive: true })
+    await writeFile(join(TEST_SNAPSHOT_DIR, `привет-chromium-${process.platform}.png`), 'cyrillic baseline')
+    await mkdir(TEST_SCREENSHOT_DIR, { recursive: true })
+    const sourceAttachmentPath = join(TEST_SCREENSHOT_DIR, 'source-cyrillic.png')
+    await writeFile(sourceAttachmentPath, 'cyrillic actual')
+
+    type TestReporter = {
+      onTestEnd: (test: object, result: object) => Promise<void>
+      onEnd: (result: { status: string }) => Promise<void>
+    }
+
+    const reporterAny = reporter as unknown as TestReporter
+
+    await reporterAny.onTestEnd(
+      {
+        id: 'test-visual-cyrillic',
+        title: 'visual pass',
+        location: { file: TEST_FILE, line: 10 },
+        parent: {
+          project: () => createProject('chromium'),
+        },
+      },
+      {
+        status: 'passed',
+        errors: [],
+        duration: 100,
+        attachments: [
+          {
+            name: 'привет-actual.png',
+            path: sourceAttachmentPath,
+            contentType: 'image/png',
+          },
+        ],
+        steps: [
+          {
+            title: 'outer step',
+            steps: [{ title: 'Expect "toHaveScreenshot(привет.png)"', steps: [] }],
+          },
+        ],
+      },
+    )
+
+    await reporterAny.onEnd({ status: 'passed' })
+
+    const report = await readOfflineReport()
+    const testEndEvent = report.events.find((event) => event.type === 'test-end')
+    expect(testEndEvent).toBeDefined()
+    const attachments = (testEndEvent as { data: { attachments: Array<{ name: string; path: string }> } }).data
+      .attachments
+
+    // Display names keep the raw (Cyrillic) names; artifact paths are content-addressed.
+    expect(attachments).toMatchObject([
+      {
+        name: 'привет-actual.png',
+        path: `test-visual-cyrillic/${contentHashName('cyrillic actual')}`,
+      },
+      {
+        name: 'привет-expected.png',
+        path: `test-visual-cyrillic/${contentHashName('cyrillic baseline')}`,
+      },
+    ])
+
+    for (const attachment of attachments) {
+      // Artifact paths must stay pure ASCII so any static file server can resolve them.
+      expect(attachment.path).toMatch(/^[A-Za-z0-9-_]+\/[0-9a-f]{40}\.png$/)
+    }
+    expect(existsSync(join(TEST_SCREENSHOT_DIR, 'test-visual-cyrillic', contentHashName('cyrillic actual')))).toBe(true)
+    expect(existsSync(join(TEST_SCREENSHOT_DIR, 'test-visual-cyrillic', contentHashName('cyrillic baseline')))).toBe(
+      true,
+    )
   })
 
   // Migrated: artifacts written at onEnd because ci: true; connect() call removed as it is

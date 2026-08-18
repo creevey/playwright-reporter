@@ -1,6 +1,6 @@
 import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { pathToFileURL } from 'url'
 
 import { expect, test } from '@playwright/test'
@@ -109,6 +109,94 @@ if (isPlaywright()) {
       await expect(page.locator('img[alt="Expected"]')).toBeVisible()
     } finally {
       await rm(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  // Regression: percent-encoded artifact filenames 404'd on standard static file
+  // servers (GitLab Pages, nginx, `serve`) that decode URL paths before filesystem
+  // lookup. The artifact must load its images through such a server.
+  test('loads Cyrillic-named screenshot artifacts through a standard static file server', async ({ page }) => {
+    const { CrvyRprtr } = await import('../../src/reporter')
+    // The artifact must live under the repo root so the `serve` instance on :3001 can host it.
+    const artifactDir = await mkdtemp(join(process.cwd(), 'tests/e2e/tmp-crvy-static-'))
+
+    try {
+      const screenshotDir = join(artifactDir, 'screenshots')
+      const reportHtmlPath = join(artifactDir, 'crvy-rprtr.html')
+      const offlineReportPath = join(artifactDir, 'crvy-rprtr-0.json')
+      const cyrillicSourcePath = join(artifactDir, 'source.png')
+      await writeFile(cyrillicSourcePath, TINY_PNG)
+
+      const reporter = new CrvyRprtr({
+        serverUrl: 'ws://localhost:9999',
+        screenshotDir,
+        offlineReportPath,
+        reportHtmlPath,
+        // Artifact emission is CI-gated in the reporter; pin it so the spec is hermetic.
+        ci: true,
+      })
+
+      type TestReporter = {
+        connect: () => void
+        onTestBegin: (test: object) => void
+        onTestEnd: (test: object, result: object) => Promise<void>
+        onEnd: (result: { status: string }) => Promise<void>
+      }
+      const reporterAny = reporter as unknown as TestReporter
+
+      reporterAny.connect()
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 100)
+      })
+
+      reporterAny.onTestBegin({
+        id: 'test-cyrillic',
+        title: 'Cyrillic visual test',
+        location: { file: 'test.spec.ts', line: 10 },
+        parent: {
+          title: 'Suite',
+          type: 'describe',
+          project: () => ({ name: 'chromium' }),
+          parent: undefined,
+        },
+      })
+
+      await reporterAny.onTestEnd(
+        {
+          id: 'test-cyrillic',
+          title: 'Cyrillic visual test',
+          location: { file: 'test.spec.ts', line: 10 },
+          parent: {
+            title: 'Suite',
+            type: 'describe',
+            project: () => ({ name: 'chromium' }),
+            parent: undefined,
+          },
+        },
+        {
+          status: 'failed',
+          errors: [{ message: 'Screenshot mismatch' }],
+          duration: 100,
+          steps: [],
+          attachments: [{ name: 'привет-actual.png', path: cyrillicSourcePath, contentType: 'image/png' }],
+        },
+      )
+
+      await reporterAny.onEnd({ status: 'failed' })
+
+      const artifactUrl = new URL(`http://localhost:3001/tests/e2e/${basename(artifactDir)}/crvy-rprtr.html`)
+      artifactUrl.searchParams.set('testPath[0]', 'Suite')
+      artifactUrl.searchParams.set('testPath[1]', 'Cyrillic visual test')
+      artifactUrl.searchParams.set('testPath[2]', 'chromium')
+
+      await page.goto(artifactUrl.href)
+
+      const actualImage = page.locator('img[alt="Actual"]')
+      await expect(actualImage).toBeVisible()
+      // A 404'd image stays at naturalWidth 0 — this is what static hosting broke before.
+      await expect.poll(() => actualImage.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0)
+    } finally {
+      await rm(artifactDir, { recursive: true, force: true })
     }
   })
 }

@@ -19,6 +19,7 @@ report.json
 # playwright
 playwright-report/
 test-results/
+tests/e2e/tmp-crvy-static-*/
 
 # runtime output
 screenshots/
