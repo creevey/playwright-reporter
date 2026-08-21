@@ -354,6 +354,7 @@ describe('handleRegister runContext persistence', () => {
     expect(ctx.routesContext.runContext).toEqual({
       configFile: '/proj/playwright.config.ts',
       cwd: '/proj',
+      rootDir: '/proj',
     })
   })
 

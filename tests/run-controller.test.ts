@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import type { ContainerPathMapping } from '../src/server/docker-support'
 import {
   RunController,
   type ChildProcessLike,
@@ -57,6 +58,7 @@ interface Fixture {
 function createFixture(
   initialCtx: RunContext | null = null,
   resolveReporter: (cwd: string) => string | null = () => null,
+  containerPathMapping?: ContainerPathMapping,
 ): Fixture {
   let runCtx: RunContext | null = initialCtx
   const broadcasts: ClientWebSocketMessage[] = []
@@ -102,6 +104,7 @@ function createFixture(
       },
     },
     resolveReporter,
+    containerPathMapping,
     launcher: {
       mode: 'local' as const,
       get available(): boolean | undefined {
@@ -243,6 +246,40 @@ describe('RunController.start', () => {
       '--project=chromium',
       'tests/foo.spec.ts:42:11',
     ])
+  })
+
+  test('docker mode routes a single descriptor through --test-list with rewritten paths', () => {
+    // Positional file:line filters are host paths and cannot resolve inside the
+    // container, so docker runs use --test-list even for a single test. Entries are
+    // relative to Playwright's rootDir, which --test-list matches against.
+    const f = createFixture(
+      { configFile: '/proj/playwright.config.ts', cwd: '/proj', rootDir: '/proj/tests' },
+      () => null,
+      { from: '/work', to: '/proj' },
+    )
+    f.setPlaywrightVersion('1.59.0')
+    f.controller.start({
+      tests: [{ file: '/work/tests/foo.spec.ts', line: 42, projectName: 'chromium', titlePath: ['foo'] }],
+    })
+
+    expect(f.spawnCalls[0]!.args).toContain('--test-list')
+    expect(f.spawnCalls[0]!.args).not.toContain('/proj/tests/foo.spec.ts:42')
+    expect(f.writtenTempFiles[0]!.content).toBe('[chromium] \u203a foo.spec.ts:42 \u203a foo')
+  })
+
+  test('seeded run context without rootDir emits candidate test-list entries', () => {
+    // Fresh server + report.json from a prior session: no register has arrived, so
+    // Playwright's rootDir is unknown. Entries must cover every plausible base or the
+    // run silently matches zero tests (exit 0, no output).
+    const f = createFixture(SAMPLE_CTX, () => null, { from: '/work', to: '/proj' })
+    f.setPlaywrightVersion('1.59.0')
+    f.controller.start({
+      tests: [{ file: '/work/tests/foo.spec.ts', line: 42, projectName: 'chromium', titlePath: ['foo'] }],
+    })
+
+    expect(f.writtenTempFiles[0]!.content).toBe(
+      ['[chromium] \u203a tests/foo.spec.ts:42 \u203a foo', '[chromium] \u203a foo.spec.ts:42 \u203a foo'].join('\n'),
+    )
   })
 
   test('multiple descriptors become positional args with shared --project', () => {

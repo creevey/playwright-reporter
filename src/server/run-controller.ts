@@ -1,18 +1,28 @@
 import { spawn } from 'child_process'
-import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { unlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, relative } from 'node:path'
+import { join } from 'node:path'
 
 import type { RunTestDescriptor } from '../schemas.ts'
 import type { ClientWebSocketMessage } from '../types.ts'
+import {
+  buildTestListEntries,
+  rewriteContainerTestDescriptors,
+  resolvePlaywrightVersion,
+  type ContainerPathMapping,
+} from './docker-support.ts'
 import { type RunLauncher } from './run-launcher.ts'
 
 export { resolvePlaywrightLaunch } from './run-launcher.ts'
+export { buildTestListEntries } from './docker-support.ts'
+export { resolvePlaywrightVersion } from './docker-support.ts'
 
 export interface RunContext {
   configFile: string
   cwd: string
+  /** Playwright's rootDir — the base --test-list entries are matched against. */
+  rootDir?: string
 }
 
 export interface RunFilters {
@@ -43,6 +53,7 @@ export interface RunControllerDeps {
   setReportRunning(running: boolean): void
   /** Records whether the in-progress run is filtered, so run-end can preserve unrelated tests. */
   setRunFiltered?(filtered: boolean): void
+  containerPathMapping?: ContainerPathMapping
   /** Flushes pending report writes on child exit so an interrupted run still persists. */
   saveReport?: () => Promise<void>
   spawn: SpawnLike
@@ -85,33 +96,7 @@ export function gteMinor(version: string, major: number, minor: number): boolean
   return min >= minor
 }
 
-/** Reads the installed `@playwright/test` version from cwd; null when unresolvable (→ positional fallback). */
-export function resolvePlaywrightVersion(cwd: string): string | null {
-  try {
-    const req = createRequire(join(cwd, 'package.json'))
-    const pkgPath = req.resolve('@playwright/test/package.json')
-    const pkg: unknown = JSON.parse(readFileSync(pkgPath, 'utf8'))
-    return typeof pkg === 'object' && pkg !== null && 'version' in pkg && typeof pkg.version === 'string'
-      ? pkg.version
-      : null
-  } catch {
-    return null
-  }
-}
-
-// Builds `--test-list` lines mirroring `playwright test --list`. Pass `rootDir` (= RunContext.cwd)
-// to rewrite absolute paths from Playwright 1.59+ — `--test-list` matches `path.relative(rootDir, ...)`.
-export function buildTestListEntries(tests: RunTestDescriptor[], rootDir?: string): string[] {
-  return tests.map((d) => {
-    const file = rootDir !== undefined && isAbsolute(d.file) ? relative(rootDir, d.file) || d.file : d.file
-    const loc = d.column === undefined ? `${file}:${d.line}` : `${file}:${d.line}:${d.column}`
-    const title = d.titlePath.join(' \u203a ')
-    const prefix = d.projectName !== undefined && d.projectName !== '' ? `[${d.projectName}] \u203a ` : ''
-    return `${prefix}${loc} \u203a ${title}`
-  })
-}
-
-function defaultWriteTempFile(content: string): string {
+const defaultWriteTempFile = (content: string): string => {
   const path = join(tmpdir(), `crvy-rprtr-test-list-${process.pid}-${Date.now()}.txt`)
   writeFileSync(path, content, 'utf8')
   return path
@@ -163,23 +148,20 @@ export class RunController {
     }
   }
 
-  start(filters: RunFilters): StartResult {
-    const ctx = this.deps.getRunContext()
-    if (ctx === null) return { ok: false, reason: 'no-config' }
-    if (this.child !== null) return { ok: false, reason: 'already-running' }
-    if (filters.tests !== undefined && filters.tests.length === 0) return { ok: false, reason: 'no-tests' }
-    if (this.deps.launcher.available === false) return { ok: false, reason: 'docker-unavailable' }
-
+  private buildPlaywrightArgs(ctx: RunContext, filters: RunFilters, tests: RunTestDescriptor[] | undefined): string[] {
     const resolveReporter = this.deps.resolveReporter ?? resolveReporterDefault
     const reporterModule = resolveReporter(ctx.cwd)
-    const tests = filters.tests
-    const useTestList = tests !== undefined && tests.length > 1 && this.supportsTestList(ctx.cwd)
+    // Docker: positional host file:line filters cannot resolve in-container — use --test-list for any count.
+    const useTestList =
+      tests !== undefined &&
+      (tests.length > 1 || this.deps.containerPathMapping !== undefined) &&
+      this.supportsTestList(ctx.cwd)
 
     const args = ['test', '--config', ctx.configFile]
     if (reporterModule !== null) args.push('--reporter', reporterModule)
     if (filters.update === true) args.push('--update-snapshots')
     if (useTestList && tests !== undefined) {
-      const content = buildTestListEntries(tests, ctx.cwd).join('\n')
+      const content = buildTestListEntries(tests, ctx.rootDir, ctx.cwd).join('\n')
       const writeTemp = this.deps.writeTempFile ?? defaultWriteTempFile
       this.testListPath = writeTemp(content)
       args.push('--test-list', this.testListPath)
@@ -192,6 +174,18 @@ export class RunController {
         args.push(d.column === undefined ? `${d.file}:${d.line}` : `${d.file}:${d.line}:${d.column}`)
       }
     }
+    return args
+  }
+
+  start(filters: RunFilters): StartResult {
+    const ctx = this.deps.getRunContext()
+    if (ctx === null) return { ok: false, reason: 'no-config' }
+    if (this.child !== null) return { ok: false, reason: 'already-running' }
+    if (filters.tests !== undefined && filters.tests.length === 0) return { ok: false, reason: 'no-tests' }
+    if (this.deps.launcher.available === false) return { ok: false, reason: 'docker-unavailable' }
+
+    const tests = rewriteContainerTestDescriptors(filters.tests, this.deps.containerPathMapping)
+    const args = this.buildPlaywrightArgs(ctx, filters, tests)
 
     const spec = this.deps.launcher.launch({ ctx, playwrightArgs: args })
     let child: ChildProcessLike

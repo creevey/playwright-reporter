@@ -25,8 +25,9 @@ export interface RoutesContext {
     playwrightSnapshotDir?: string
     playwrightSnapshotPathTemplate?: string
     playwrightToHaveScreenshotPathTemplate?: string
+    containerPathMapping?: ContainerPathMapping
   }
-  runContext?: { configFile: string; cwd: string }
+  runContext?: { configFile: string; cwd: string; rootDir?: string }
   runInfo?: { mode: 'local' | 'docker' }
   containerPathMapping?: ContainerPathMapping
 }

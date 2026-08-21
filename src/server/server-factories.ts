@@ -34,6 +34,7 @@ function createServerRunController(
       reportData.isRunning = running
     },
     setRunFiltered,
+    containerPathMapping: routesContext.containerPathMapping,
     saveReport,
     spawn: createRealSpawn(),
     timers: createRealTimers(),

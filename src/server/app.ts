@@ -25,7 +25,7 @@ import {
   type HandlerContext,
 } from './handlers.ts'
 import { resolveRunBackend } from './launcher-resolver.ts'
-import { resolvePlaywrightConfig } from './playwright-config.ts'
+import { resolveSeedConfigFile } from './playwright-config.ts'
 import { createReportPersistence } from './report-persistence.ts'
 import { createRoutesContext } from './routes-context.ts'
 import { handleHttpRequest, type RoutesContext } from './routes.ts'
@@ -215,7 +215,7 @@ async function seedRunContext(routesContext: RoutesContext, options: ServerOptio
   if (routesContext.runContext !== undefined) {
     return
   }
-  const configFile = options.playwrightConfig ?? (await resolvePlaywrightConfig(process.cwd()))
+  const configFile = await resolveSeedConfigFile(options.playwrightConfig, process.cwd())
   if (configFile !== null) {
     routesContext.runContext = { configFile, cwd: process.cwd() }
   }

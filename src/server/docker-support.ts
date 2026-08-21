@@ -1,4 +1,7 @@
 import { spawn } from 'child_process'
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { isAbsolute, join, relative, sep } from 'node:path'
 
 import { detect } from 'package-manager-detector/detect'
 
@@ -137,4 +140,65 @@ export function rewriteContainerPath(path: string, mapping: ContainerPathMapping
   if (path === mapping.from) return mapping.to
   if (path.startsWith(`${mapping.from}/`)) return mapping.to + path.slice(mapping.from.length)
   return path
+}
+
+/** Reads the installed `@playwright/test` version from cwd; null when unresolvable (→ positional fallback). */
+export function resolvePlaywrightVersion(cwd: string): string | null {
+  try {
+    const req = createRequire(join(cwd, 'package.json'))
+    const pkgPath = req.resolve('@playwright/test/package.json')
+    const pkg: unknown = JSON.parse(readFileSync(pkgPath, 'utf8'))
+    return typeof pkg === 'object' && pkg !== null && 'version' in pkg && typeof pkg.version === 'string'
+      ? pkg.version
+      : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Docker run-mode reports carry container-side test file paths (`/work/...`);
+ * run descriptors from the UI must be mapped back to host paths before they
+ * feed `--test-list` / positional filters resolved against the host `ctx.cwd`.
+ */
+export function rewriteContainerTestDescriptors<T extends { readonly file: string }>(
+  tests: T[] | undefined,
+  mapping: ContainerPathMapping | undefined,
+): T[] | undefined {
+  if (tests === undefined || mapping === undefined) return tests
+  return tests.map((d) => ({ ...d, file: rewriteContainerPath(d.file, mapping) }))
+}
+
+type TestListDescriptor = {
+  readonly file: string
+  readonly line: number
+  readonly column?: number
+  readonly projectName?: string
+  readonly titlePath: readonly string[]
+}
+
+function testListEntry(d: TestListDescriptor, file: string): string {
+  const loc = d.column === undefined ? `${file}:${d.line}` : `${file}:${d.line}:${d.column}`
+  const title = d.titlePath.join(' \u203a ')
+  const prefix = d.projectName !== undefined && d.projectName !== '' ? `[${d.projectName}] \u203a ` : ''
+  return `${prefix}${loc} \u203a ${title}`
+}
+
+/**
+ * Builds `--test-list` lines mirroring `playwright test --list`, with paths relative to
+ * Playwright's rootDir. When rootDir is unknown (no register yet — seeded run context),
+ * emits one candidate entry per plausible base (every suffix of the cwd-relative path):
+ * Playwright derives rootDir from testDir when set, and non-matching entries are
+ * ignored silently, so exactly one candidate matches the intended test.
+ */
+export function buildTestListEntries(tests: readonly TestListDescriptor[], rootDir?: string, cwd?: string): string[] {
+  if (rootDir !== undefined) {
+    return tests.map((d) => testListEntry(d, isAbsolute(d.file) ? relative(rootDir, d.file) || d.file : d.file))
+  }
+  return tests.flatMap((d) => {
+    if (!isAbsolute(d.file)) return [testListEntry(d, d.file)]
+    const rel = relative(cwd ?? process.cwd(), d.file)
+    const segments = rel.split(sep)
+    return segments.map((_, i) => testListEntry(d, segments.slice(i).join(sep)))
+  })
 }

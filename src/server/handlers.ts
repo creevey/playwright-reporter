@@ -1,4 +1,5 @@
 import { existsSync } from 'fs'
+import { dirname, resolve } from 'path'
 
 import { applyTestBeginEvent, applyTestEndEvent, finalizeRunEvent } from '../report-state.ts'
 import type { RegisterData, TestBeginData, TestEndData } from '../schemas.ts'
@@ -128,6 +129,8 @@ function applyContainerPathMapping(rawData: RegisterData, mapping: ContainerPath
         : rewriteContainerPath(rawData.playwrightSnapshotDir, mapping),
     playwrightTestDir:
       rawData.playwrightTestDir === undefined ? undefined : rewriteContainerPath(rawData.playwrightTestDir, mapping),
+    playwrightRootDir:
+      rawData.playwrightRootDir === undefined ? undefined : rewriteContainerPath(rawData.playwrightRootDir, mapping),
     configFile: rawData.configFile === undefined ? undefined : rewriteContainerPath(rawData.configFile, mapping),
     cwd: rawData.cwd === undefined ? undefined : rewriteContainerPath(rawData.cwd, mapping),
   }
@@ -170,11 +173,29 @@ export function handleRegister(ctx: HandlerContext, rawData: RegisterData): void
   }
 
   if (data.configFile !== undefined && data.cwd !== undefined) {
-    ctx.routesContext.runContext = { configFile: data.configFile, cwd: data.cwd }
+    ctx.routesContext.runContext = buildRunContext(data.configFile, data)
   }
 
   console.log('[Server] Reporter registered with config:', {
     playwrightSnapshotDir: data.playwrightSnapshotDir,
     playwrightTestDir: data.playwrightTestDir,
+    configFile: data.configFile,
+    cwd: data.cwd,
   })
+}
+
+/**
+ * The config dir is the project root the server mounts and spawns in. Older reporters
+ * registered Playwright's `rootDir` as cwd — a testDir-derived subdirectory — so derive
+ * cwd from the config file instead. `rootDir` keys --test-list entry matching.
+ */
+function buildRunContext(configFile: string, data: RegisterData): NonNullable<RoutesContext['runContext']> {
+  const configDir = dirname(configFile)
+  return {
+    configFile,
+    cwd: configDir,
+    rootDir:
+      data.playwrightRootDir ??
+      (data.playwrightTestDir === undefined ? configDir : resolve(configDir, data.playwrightTestDir)),
+  }
 }

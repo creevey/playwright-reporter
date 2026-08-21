@@ -120,10 +120,11 @@ export class CrvyRprtr implements Reporter {
       data: {
         playwrightSnapshotDir: typeof snapshotDir === 'string' ? snapshotDir : undefined,
         playwrightTestDir: typeof testDir === 'string' ? testDir : undefined,
+        playwrightRootDir: typeof config.rootDir === 'string' ? config.rootDir : undefined,
         playwrightSnapshotPathTemplate: this.playwrightSnapshotPathTemplate,
         playwrightToHaveScreenshotPathTemplate: this.playwrightToHaveScreenshotPathTemplate,
         configFile: config.configFile,
-        cwd: config.rootDir ?? process.cwd(),
+        cwd: config.configFile === undefined ? process.cwd() : dirname(config.configFile),
       },
     })
   }
@@ -296,5 +297,4 @@ export class CrvyRprtr implements Reporter {
     }
   }
 }
-
 export default CrvyRprtr

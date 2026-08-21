@@ -37,6 +37,7 @@ export function createRoutesContext(
       playwrightSnapshotDir: options.playwrightSnapshotDir,
       playwrightSnapshotPathTemplate: options.playwrightSnapshotPathTemplate,
       playwrightToHaveScreenshotPathTemplate: options.playwrightToHaveScreenshotPathTemplate,
+      containerPathMapping: options.containerPathMapping,
     },
     runContext: undefined,
     runInfo: options.runInfo,

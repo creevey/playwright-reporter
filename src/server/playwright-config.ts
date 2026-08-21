@@ -1,4 +1,4 @@
-import { join } from 'path'
+import { join, resolve } from 'path'
 
 import { fileExists } from './file-utils.ts'
 
@@ -24,4 +24,13 @@ export async function resolvePlaywrightConfig(cwd: string): Promise<string | nul
   )
   // find() preserves CONFIG_FILES priority order (first existing file wins).
   return matches.find((path): path is string => path !== null) ?? null
+}
+
+/**
+ * Resolves the config file for run-context seeding. A user-provided `--config` may be
+ * relative (e.g. `./playwright.config.ts`); resolving it against cwd keeps downstream
+ * container path-rewriting accurate and avoids a spurious "outside the project" warning.
+ */
+export function resolveSeedConfigFile(option: string | undefined, cwd: string): Promise<string | null> {
+  return option === undefined ? resolvePlaywrightConfig(cwd) : Promise.resolve(resolve(cwd, option))
 }

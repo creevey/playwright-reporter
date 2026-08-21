@@ -5,6 +5,7 @@ import { dirname, resolve } from 'path'
 import { isForeignAbsolutePath } from '../path-utils.ts'
 import { resolveBaselineTargets } from '../snapshot-path-resolver.ts'
 import type { TestData } from '../types.ts'
+import { rewriteContainerPath } from './docker-support.ts'
 import { respondWithFile } from './file-utils.ts'
 import type { RoutesContext } from './routes.ts'
 import { isPathWithinRoots } from './utils.ts'
@@ -78,12 +79,21 @@ export function resolveBaselineSnapshotPath(
   retry: number,
   imageName: string,
 ): string | null {
-  const testFile = test.location?.file
+  const mapping = routing?.containerPathMapping
+  // Docker run-mode reporters report container-side test files (`/work/...`); map them
+  // back to host paths so the resolver's `relative(testDir, testFile)` stays meaningful.
+  const rawTestFile = test.location?.file
+  const testFile =
+    rawTestFile === undefined || mapping === undefined ? rawTestFile : rewriteContainerPath(rawTestFile, mapping)
   const declaration = test.results?.[retry]?.visualDeclarations?.find((candidate) => candidate.visualName === imageName)
 
   if (routing === undefined || testFile === undefined || declaration === undefined) {
     return null
   }
+
+  // Baselines from containerized runs carry the container's `-linux` snapshot suffix,
+  // not the host platform's.
+  const isContainerPath = mapping !== undefined && testFile !== rawTestFile
 
   const targets = resolveBaselineTargets({
     testFile,
@@ -94,7 +104,7 @@ export function resolveBaselineSnapshotPath(
       testDir: routing.playwrightTestDir ?? dirname(testFile),
       snapshotDir: routing.playwrightSnapshotDir ?? dirname(testFile),
       projectName: test.projectName ?? test.browser,
-      snapshotSuffix: process.platform,
+      snapshotSuffix: isContainerPath ? 'linux' : process.platform,
       snapshotPathTemplate: routing.playwrightSnapshotPathTemplate,
       toHaveScreenshotPathTemplate: routing.playwrightToHaveScreenshotPathTemplate,
     },

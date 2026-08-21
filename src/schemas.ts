@@ -201,6 +201,7 @@ export type RunEndData = z.infer<typeof RunEndDataSchema>
 export const RegisterDataSchema = z.object({
   playwrightSnapshotDir: z.string().optional(),
   playwrightTestDir: z.string().optional(),
+  playwrightRootDir: z.string().optional(),
   playwrightSnapshotPathTemplate: z.string().optional(),
   playwrightToHaveScreenshotPathTemplate: z.string().optional(),
   configFile: z.string().optional(),
