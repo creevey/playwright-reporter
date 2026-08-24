@@ -146,6 +146,14 @@ The server still runs on your host; only `playwright test` executes in the conta
 
 Programmatic equivalents: `startServer({ runMode: 'docker', docker: { image, platform, command, extraArgs } })`. `docker.command` overrides the container-side invocation verbatim (e.g. `['pnpm', 'exec', 'playwright']`); `docker.extraArgs` appends raw `docker run` flags.
 
+### Windows
+
+The recommended Windows setup is **WSL2**: enable Docker Desktop's WSL2 integration (Settings → Resources → WSL integration), keep the project inside the WSL filesystem (e.g. `~/proj` in your distro, not `/mnt/c/...` — bind-mounts from `/mnt/c` are slow and lack inotify events), and run `npx crvy-rprtr` from the WSL shell. Paths and rendering then behave exactly as on Linux, so baselines match CI.
+
+Running natively on a Windows host (PowerShell/cmd) works but is **experimental**: Docker Desktop translates the `C:\proj:/work` mount, and crvy-rprtr rewrites Windows paths in container arguments, but this path has no CI coverage — expect a one-time experimental warning on the first run. Local (`--run-mode local`) Windows runs can never match Linux CI baselines (DirectWrite vs fontconfig text rendering) — which is exactly the problem Docker mode solves, so prefer WSL2.
+
+Known limitations on native Windows: UNC project roots (`\\server\share\...`) are unsupported; drive-letter casing is normalized (`C:` ≡ `c:`); Windows-specific host env vars are forwarded into the container harmlessly.
+
 Notes:
 
 > **Important — baselines are image-specific, not architecture-specific.** Text rendering follows the image's fontconfig: Ubuntu-based images (including the default `mcr.microsoft.com/playwright:*-noble`) render text with subpixel (LCD) antialiasing and slight hinting, while Debian-based images (e.g. `node:24` + `playwright install --with-deps`) render grayscale with full hinting — different pixels _and_ slightly different text widths. Generate and verify baselines in the **same image** everywhere (CI and local), and regenerate baselines once after switching image flavor. See [docs/docker-screenshot-determinism.md](docs/docker-screenshot-determinism.md) for the full investigation.

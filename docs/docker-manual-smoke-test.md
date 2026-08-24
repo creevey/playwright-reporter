@@ -9,7 +9,7 @@ project scaffolded in Setup.
 
 ## Prerequisites
 
-- Docker Desktop (macOS/Windows) or Docker Engine (Linux) installed and the **daemon running**:
+- Docker Desktop (macOS; Windows via WSL2 integration — native Windows hosts are experimental) or Docker Engine (Linux) installed and the **daemon running**:
   `docker info` exits 0.
 - Node.js 20+ and npm (the default MS Playwright image only guarantees `npx` in-container).
 - This repo checked out at the commit under test.
