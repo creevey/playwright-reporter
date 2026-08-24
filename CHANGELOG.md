@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-08-24
+
+### Added
+
+- **reporter:** Portable artifacts mode via CRVY_RPRTR_PORTABLE_ARTIFACTS
+- **server:** --update-snapshots run flag and docker-unavailable run reason
+- **server:** Carry run mode and phase in run-status broadcasts
+- **server:** Docker CLI helpers and container command resolution
+- **server:** DockerLauncher spawning playwright runs in containers
+- **server:** Run-mode resolution, docker launcher wiring, and docker CLI flags
+- **ui:** Run mode badge, update-baselines action, and image-pull state
+
+### Changed
+
+- **run-controller:** Extract RunLauncher strategy with LocalLauncher
+
+### Documentation
+
+- **spec:** Docker browser execution design
+- **plan:** Docker browser execution implementation plan
+- Docker mode usage and options
+- Docker rendering determinism findings; correct baseline arch guidance
+
+### Fixed
+
+- **run-controller:** Make UI re-run work on Playwright 1.59+
+- **server:** Surface auto-mode docker fallback warning
+- **server:** Rewrite container paths in reporter register payloads
+- **server:** Rewrite host paths in docker container command args
+- **server:** Warn when --config path is unreachable inside container
+- **reporter:** Content-addressed artifact names for static-host portability
+- **server:** Route docker runs via rootDir-keyed --test-list with host paths
+
+### Testing
+
+- CI-gated docker smoke test for containerized runs
 ## [0.2.4] - 2026-07-06
 
 ### Added
