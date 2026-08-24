@@ -148,7 +148,9 @@ Programmatic equivalents: `startServer({ runMode: 'docker', docker: { image, pla
 
 Notes:
 
-- Baselines are architecture-specific. A baseline generated on Apple Silicon (arm64) will not necessarily match an amd64 CI runner; pin `--docker-platform` if your team mixes architectures.
+> **Important — baselines are image-specific, not architecture-specific.** Text rendering follows the image's fontconfig: Ubuntu-based images (including the default `mcr.microsoft.com/playwright:*-noble`) render text with subpixel (LCD) antialiasing and slight hinting, while Debian-based images (e.g. `node:24` + `playwright install --with-deps`) render grayscale with full hinting — different pixels _and_ slightly different text widths. Generate and verify baselines in the **same image** everywhere (CI and local), and regenerate baselines once after switching image flavor. See [docs/docker-screenshot-determinism.md](docs/docker-screenshot-determinism.md) for the full investigation.
+
+- Baselines are **not** architecture-specific for typical DOM/text pages: amd64 and arm64 variants of the same image render bit-identically in practice (verified: 100/103 tests byte-identical between an amd64 CI runner and Apple Silicon). Use the native architecture on every host — do **not** pin `--docker-platform` to force amd64 emulation on Apple Silicon (Rosetta/QEMU is slower and less stable, and buys nothing). Residual risk: canvas 2D / complex SVG / WebGL content can show tiny cross-arch anti-aliasing diffs; handle per-test with `maxDiffPixels`.
 - If your `playwright.config.ts` uses `webServer`, that server now starts inside the container: it must bind `0.0.0.0`, and hosts it references must resolve inside the container.
 - Timezone and locale are pinned (`TZ=UTC`, `LANG=C.UTF-8`, `LC_ALL=C.UTF-8`) so date/number rendering in screenshots is stable; override via `docker.extraArgs` if you need a different locale under test.
 - The "Run & update baselines" button (▶↻) regenerates baselines inside the container, keeping generation and verification in the same image.
