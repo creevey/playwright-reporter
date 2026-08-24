@@ -201,15 +201,25 @@ function testListEntry(d: TestListDescriptor, file: string): string {
  * emits one candidate entry per plausible base (every suffix of the cwd-relative path):
  * Playwright derives rootDir from testDir when set, and non-matching entries are
  * ignored silently, so exactly one candidate matches the intended test.
+ * `pathStyle: 'posix'` (docker mode) converts backslashes so the in-container
+ * Linux Playwright can match entries; the default `'host'` keeps host separators.
  */
-export function buildTestListEntries(tests: readonly TestListDescriptor[], rootDir?: string, cwd?: string): string[] {
+export function buildTestListEntries(
+  tests: readonly TestListDescriptor[],
+  rootDir?: string,
+  cwd?: string,
+  pathStyle: 'host' | 'posix' = 'host',
+): string[] {
+  const convert = (p: string): string => (pathStyle === 'posix' ? p.replace(/\\/g, '/') : p)
   if (rootDir !== undefined) {
-    return tests.map((d) => testListEntry(d, isAbsolute(d.file) ? relative(rootDir, d.file) || d.file : d.file))
+    return tests.map((d) =>
+      testListEntry(d, convert(isAbsolute(d.file) ? relative(rootDir, d.file) || d.file : d.file)),
+    )
   }
   return tests.flatMap((d) => {
-    if (!isAbsolute(d.file)) return [testListEntry(d, d.file)]
+    if (!isAbsolute(d.file)) return [testListEntry(d, convert(d.file))]
     const rel = relative(cwd ?? process.cwd(), d.file)
-    const segments = rel.split(sep)
-    return segments.map((_, i) => testListEntry(d, segments.slice(i).join(sep)))
+    const segments = pathStyle === 'posix' ? rel.split(/[\\/]/) : rel.split(sep)
+    return segments.map((_, i) => testListEntry(d, convert(segments.slice(i).join(sep))))
   })
 }

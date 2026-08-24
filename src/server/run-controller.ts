@@ -161,7 +161,12 @@ export class RunController {
     if (reporterModule !== null) args.push('--reporter', reporterModule)
     if (filters.update === true) args.push('--update-snapshots')
     if (useTestList && tests !== undefined) {
-      const content = buildTestListEntries(tests, ctx.rootDir, ctx.cwd).join('\n')
+      const content = buildTestListEntries(
+        tests,
+        ctx.rootDir,
+        ctx.cwd,
+        this.deps.containerPathMapping === undefined ? 'host' : 'posix',
+      ).join('\n')
       const writeTemp = this.deps.writeTempFile ?? defaultWriteTempFile
       this.testListPath = writeTemp(content)
       args.push('--test-list', this.testListPath)

@@ -267,6 +267,27 @@ describe('RunController.start', () => {
     expect(f.writtenTempFiles[0]!.content).toBe('[chromium] \u203a foo.spec.ts:42 \u203a foo')
   })
 
+  test('docker mode writes --test-list entries with POSIX separators', () => {
+    const f = createFixture(SAMPLE_CTX, () => null, { from: '/work', to: 'C:\\proj' })
+    f.setPlaywrightVersion('1.59.0')
+    f.controller.start({
+      tests: [{ file: 'tests\\foo.spec.ts', line: 10, titlePath: ['foo'] }],
+    })
+    expect(f.writtenTempFiles[0]!.content).toBe('tests/foo.spec.ts:10 \u203a foo')
+  })
+
+  test('local mode keeps host separators in --test-list entries', () => {
+    const f = createFixture(SAMPLE_CTX)
+    f.setPlaywrightVersion('1.59.0')
+    f.controller.start({
+      tests: [
+        { file: 'tests\\a.spec.ts', line: 1, titlePath: ['a'] },
+        { file: 'tests\\b.spec.ts', line: 2, titlePath: ['b'] },
+      ],
+    })
+    expect(f.writtenTempFiles[0]!.content).toContain('tests\\a.spec.ts:1')
+  })
+
   test('seeded run context without rootDir emits candidate test-list entries', () => {
     // Fresh server + report.json from a prior session: no register has arrived, so
     // Playwright's rootDir is unknown. Entries must cover every plausible base or the
@@ -563,6 +584,21 @@ describe('buildTestListEntries', () => {
       '/proj/tests',
     )
     expect(entries).toEqual(['[chromium] \u203a a.spec.ts:1 \u203a t1'])
+  })
+
+  test('posix pathStyle converts backslashes in file paths', () => {
+    const entries = buildTestListEntries(
+      [{ file: 'tests\\foo.spec.ts', line: 10, titlePath: ['does a thing'] }],
+      undefined,
+      undefined,
+      'posix',
+    )
+    expect(entries).toEqual(['tests/foo.spec.ts:10 \u203a does a thing'])
+  })
+
+  test('host pathStyle (default) preserves backslashes', () => {
+    const entries = buildTestListEntries([{ file: 'tests\\foo.spec.ts', line: 10, titlePath: ['does a thing'] }])
+    expect(entries).toEqual(['tests\\foo.spec.ts:10 \u203a does a thing'])
   })
 })
 
