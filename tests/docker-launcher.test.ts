@@ -197,7 +197,7 @@ describe('DockerLauncher.launch', () => {
     expect(args[idx + 1]).toBe('@crvy/rprtr')
   })
 
-  test('bind-mounts --test-list outside ctx.cwd read-only at the same path before the image', async () => {
+  test('bind-mounts the host --test-list tmpfile read-only at a fixed container path', async () => {
     const { launcher } = makeLauncher()
     await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
     const args = launcher.launch({
@@ -206,13 +206,37 @@ describe('DockerLauncher.launch', () => {
     }).args
     const idx = args.indexOf('--test-list')
     expect(idx).toBeGreaterThan(-1)
-    expect(args[idx + 1]).toBe('/tmp/crvy-rprtr-test-list-123.txt')
-    const mount = '/tmp/crvy-rprtr-test-list-123.txt:/tmp/crvy-rprtr-test-list-123.txt:ro'
+    expect(args[idx + 1]).toBe('/tmp/crvy-rprtr-test-list.txt')
+    const mount = '/tmp/crvy-rprtr-test-list-123.txt:/tmp/crvy-rprtr-test-list.txt:ro'
     const mountIdx = args.indexOf(mount)
     expect(mountIdx).toBeGreaterThan(-1)
     expect(args[mountIdx - 1]).toBe('-v')
     const imageIdx = args.indexOf('mcr.microsoft.com/playwright:v1.59.0-noble')
     expect(mountIdx).toBeLessThan(imageIdx)
+  })
+
+  test('rewrites Windows host paths in --config and --test-list', async () => {
+    const { launcher } = makeLauncher()
+    const winCtx: RunContext = { configFile: 'C:\\proj\\playwright.config.ts', cwd: 'C:\\proj' }
+    await launcher.prepare!({ ctx: winCtx, onProgress: noopProgress })
+    const args = launcher.launch({
+      ctx: winCtx,
+      playwrightArgs: [
+        'test',
+        '--config',
+        'C:\\proj\\playwright.config.ts',
+        '--test-list',
+        'C:\\Users\\dev\\AppData\\Local\\Temp\\crvy-rprtr-test-list-1.txt',
+      ],
+    }).args
+    expect(args).toContain(`C:\\proj:${DOCKER_WORK_DIR}:rw`)
+    const configIdx = args.indexOf('--config')
+    expect(args[configIdx + 1]).toBe(`${DOCKER_WORK_DIR}/playwright.config.ts`)
+    const listIdx = args.indexOf('--test-list')
+    expect(args[listIdx + 1]).toBe('/tmp/crvy-rprtr-test-list.txt')
+    expect(args).toContain(
+      'C:\\Users\\dev\\AppData\\Local\\Temp\\crvy-rprtr-test-list-1.txt:/tmp/crvy-rprtr-test-list.txt:ro',
+    )
   })
 
   test('passes non-path positional and flag args through unchanged', async () => {

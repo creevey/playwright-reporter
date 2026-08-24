@@ -21,6 +21,9 @@ export const DOCKER_WORK_DIR = '/work'
 /** Module-private: only the arg vector and server URL built here use it. */
 const DOCKER_HOST_GATEWAY = 'host.docker.internal'
 
+/** Module-private: fixed container-side target for the host `--test-list` tmpfile mount. */
+const CONTAINER_TEST_LIST_PATH = '/tmp/crvy-rprtr-test-list.txt'
+
 export interface DockerOptions {
   image?: string
   platform?: 'linux/amd64' | 'linux/arm64'
@@ -145,7 +148,7 @@ interface RewrittenArgs {
  * Module-private: translates host paths in playwright args so they resolve inside the container.
  * - `--config` / `--reporter` under ctx.cwd → `${workDir}/...`.
  * - `--reporter` outside ctx.cwd (resolved from the server's own package) → bare `@crvy/rprtr`.
- * - `--test-list` outside ctx.cwd (host tmpdir) → value unchanged, plus a same-path read-only bind mount.
+ * - `--test-list` outside ctx.cwd (host tmpdir) → fixed container path (`CONTAINER_TEST_LIST_PATH`), plus a read-only bind mount of the host file onto it.
  * - `--config` outside ctx.cwd → value unchanged plus a warning (the container cannot see it).
  * Equals-form (`--flag=value`) and dangling trailing flags are NOT rewritten; run-controller emits pairs only.
  */
@@ -166,8 +169,8 @@ function rewritePlaywrightArgs(playwrightArgs: string[], ctx: RunContext, workDi
     if (flag === '--reporter' && rewritten === value) {
       args.push(REPORTER_BARE_SPECIFIER)
     } else if (flag === '--test-list' && rewritten === value) {
-      args.push(value)
-      bindMounts.push(`${value}:${value}:ro`)
+      args.push(CONTAINER_TEST_LIST_PATH)
+      bindMounts.push(`${value}:${CONTAINER_TEST_LIST_PATH}:ro`)
     } else {
       if (flag === '--config' && rewritten === value) {
         warn(`--config "${value}" is outside the project directory and will not resolve inside the container.`)
