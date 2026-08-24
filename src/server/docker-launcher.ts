@@ -43,7 +43,10 @@ export interface DockerLauncherOptions {
   platform?: NodeJS.Platform
 }
 
-/** Never propagated into the container: host-specific or launcher-pinned values. */
+/**
+ * Never propagated into the container: host-specific or launcher-pinned values. Upper-case,
+ * matched case-insensitively — Windows env-var casing is nondeterministic (`Path` vs `PATH`).
+ */
 const ENV_DENYLIST = new Set([
   'CI',
   'PLAYWRIGHT_BROWSERS_PATH',
@@ -53,7 +56,15 @@ const ENV_DENYLIST = new Set([
   'LANG',
   'LC_ALL',
   'PLAYWRIGHT_HTML_OPEN',
+  'PATH',
 ])
+
+/** Windows host env noise: host paths/separators a Linux container can't use, or host-platform markers (`OS`, `PROCESSOR_ARCHITECTURE`) that mislead in-container platform detection. */
+const WINDOWS_ENV_NOISE = new Set(
+  'SYSTEMROOT COMSPEC WINDIR PATHEXT OS PROGRAMFILES PROGRAMFILES(X86) PROGRAMW6432 PROGRAMDATA ALLUSERSPROFILE PUBLIC APPDATA LOCALAPPDATA TEMP TMP USERPROFILE HOMEDRIVE HOMEPATH USERNAME PSMODULEPATH DRIVERDATA NUMBER_OF_PROCESSORS PROCESSOR_ARCHITECTURE PROCESSOR_IDENTIFIER PROCESSOR_LEVEL PROCESSOR_REVISION'.split(
+    ' ',
+  ),
+)
 
 export class DockerUnavailableError extends Error {
   constructor() {
@@ -161,7 +172,8 @@ function buildDockerRunArgs(ctx: RunContext, playwrightArgs: string[], deps: Lau
   args.push('-e', 'CRVY_RPRTR_PORTABLE_ARTIFACTS=1', '-e', 'TZ=UTC', '-e', 'LANG=C.UTF-8', '-e', 'LC_ALL=C.UTF-8')
   args.push('-e', 'PLAYWRIGHT_HTML_OPEN=never')
   for (const [key, value] of Object.entries(deps.env)) {
-    if (ENV_DENYLIST.has(key) || value === undefined) continue
+    const upper = key.toUpperCase()
+    if (ENV_DENYLIST.has(upper) || WINDOWS_ENV_NOISE.has(upper) || value === undefined) continue
     args.push('-e', key)
   }
   if (deps.docker?.extraArgs !== undefined) args.push(...deps.docker.extraArgs)

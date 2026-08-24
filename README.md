@@ -152,7 +152,7 @@ The recommended Windows setup is **WSL2**: enable Docker Desktop's WSL2 integrat
 
 Running natively on a Windows host (PowerShell/cmd) works but is **experimental**: Docker Desktop translates the `C:\proj:/work` mount, and crvy-rprtr rewrites Windows paths in container arguments, but this path has no CI coverage — expect a one-time experimental warning on the first run. Local (`--run-mode local`) Windows runs can never match Linux CI baselines (DirectWrite vs fontconfig text rendering) — which is exactly the problem Docker mode solves, so prefer WSL2.
 
-Known limitations on native Windows: UNC project roots (`\\server\share\...`) are unsupported; drive-letter casing is normalized (`C:` ≡ `c:`); Windows-specific host env vars are forwarded into the container harmlessly.
+Known limitations on native Windows: UNC project roots (`\\server\share\...`) are unsupported; drive-letter casing is normalized (`C:` ≡ `c:`), but path body case is not; Windows-specific host env vars (`PATH`, `TEMP`, `APPDATA`, `ProgramFiles`, ...) are filtered out so the container keeps its own environment (user env vars like API keys are still forwarded); single-file bind mounts (used for `--test-list`) can be flaky on some Docker Desktop versions — if the container sees an empty or missing test list, that is why.
 
 Notes:
 

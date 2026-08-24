@@ -346,6 +346,12 @@ describe('DockerLauncher.launch', () => {
         TZ: 'Berlin',
         CRVY_RPRTR_SERVER_URL: 'ws://evil',
         EMPTY: undefined,
+        PATH: 'C:\\Windows\\system32;C:\\Windows',
+        Path: 'C:\\Windows\\system32',
+        SystemRoot: 'C:\\Windows',
+        TEMP: 'C:\\Users\\dev\\AppData\\Local\\Temp',
+        APPDATA: 'C:\\Users\\dev\\AppData\\Roaming',
+        'ProgramFiles(x86)': 'C:\\Program Files (x86)',
       } as Record<string, string | undefined>,
     })
     await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
@@ -358,6 +364,12 @@ describe('DockerLauncher.launch', () => {
     expect(envFlags).not.toContain('TZ')
     expect(envFlags).not.toContain('CRVY_RPRTR_SERVER_URL')
     expect(envFlags).not.toContain('EMPTY')
+    expect(envFlags).not.toContain('PATH')
+    expect(envFlags).not.toContain('Path')
+    expect(envFlags).not.toContain('SystemRoot')
+    expect(envFlags).not.toContain('TEMP')
+    expect(envFlags).not.toContain('APPDATA')
+    expect(envFlags).not.toContain('ProgramFiles(x86)')
     // The pinned values still come from explicit -e KEY=VALUE flags.
     expect(spec.args).toContain('TZ=UTC')
     expect(spec.args).toContain('CRVY_RPRTR_SERVER_URL=ws://host.docker.internal:3000')
