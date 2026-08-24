@@ -168,12 +168,12 @@ const PATH_FLAGS = new Set(['--config', '--reporter', '--test-list'])
 
 interface RewrittenArgs {
   args: string[]
-  /** Extra `-v <path>:<path>:ro` host paths (e.g. host tmpdir files) the container must see verbatim. */
+  /** Extra `-v <host>:<container>:ro` bind mounts (e.g. the host --test-list tmpfile onto its fixed container path). */
   bindMounts: string[]
 }
 
 /**
- * Module-private: translates host paths in playwright args so they resolve inside the container.
+ * Translates host paths in playwright args so they resolve inside the container.
  * - `--config` / `--reporter` under ctx.cwd → `${workDir}/...`.
  * - `--reporter` outside ctx.cwd (resolved from the server's own package) → bare `@crvy/rprtr`.
  * - `--test-list` outside ctx.cwd (host tmpdir) → fixed container path (`CONTAINER_TEST_LIST_PATH`), plus a read-only bind mount of the host file onto it.
