@@ -5,6 +5,8 @@ import { isAbsolute, join, relative, sep } from 'node:path'
 
 import { detect } from 'package-manager-detector/detect'
 
+import type { RunContext } from './run-controller.ts'
+
 export interface DockerExecResult {
   exitCode: number
   stdout: string
@@ -151,6 +153,65 @@ export function rewriteContainerPath(path: string, mapping: ContainerPathMapping
 /** Module-private: matching-only normalization — the result is never emitted as a host path. */
 function normalizeForMatch(p: string): string {
   return p.replace(/\\/g, '/').replace(/^[A-Z](?=:)/, (c) => c.toLowerCase())
+}
+
+export type Warn = (message: string) => void
+
+/** Module-private: fixed container-side target for the host `--test-list` tmpfile mount. */
+const CONTAINER_TEST_LIST_PATH = '/tmp/crvy-rprtr-test-list.txt'
+
+/** Bare specifier substituted when `--reporter` resolved outside the project on the host. */
+const REPORTER_BARE_SPECIFIER = '@crvy/rprtr'
+
+/** Module-private: path-valued playwright arg flags emitted by run-controller in space-separated form. */
+const PATH_FLAGS = new Set(['--config', '--reporter', '--test-list'])
+
+interface RewrittenArgs {
+  args: string[]
+  /** Extra `-v <path>:<path>:ro` host paths (e.g. host tmpdir files) the container must see verbatim. */
+  bindMounts: string[]
+}
+
+/**
+ * Module-private: translates host paths in playwright args so they resolve inside the container.
+ * - `--config` / `--reporter` under ctx.cwd → `${workDir}/...`.
+ * - `--reporter` outside ctx.cwd (resolved from the server's own package) → bare `@crvy/rprtr`.
+ * - `--test-list` outside ctx.cwd (host tmpdir) → fixed container path (`CONTAINER_TEST_LIST_PATH`), plus a read-only bind mount of the host file onto it.
+ * - `--config` outside ctx.cwd → value unchanged plus a warning (the container cannot see it).
+ * Equals-form (`--flag=value`) and dangling trailing flags are NOT rewritten; run-controller emits pairs only.
+ */
+export function rewritePlaywrightArgs(
+  playwrightArgs: string[],
+  ctx: RunContext,
+  workDir: string,
+  warn: Warn,
+): RewrittenArgs {
+  const args: string[] = []
+  const bindMounts: string[] = []
+  for (let i = 0; i < playwrightArgs.length; i++) {
+    const flag = playwrightArgs[i]!
+    if (!PATH_FLAGS.has(flag)) {
+      args.push(flag)
+      continue
+    }
+    const value = playwrightArgs[i + 1]
+    if (value === undefined) break
+    i += 1
+    args.push(flag)
+    const rewritten = rewriteContainerPath(value, { from: ctx.cwd, to: workDir })
+    if (flag === '--reporter' && rewritten === value) {
+      args.push(REPORTER_BARE_SPECIFIER)
+    } else if (flag === '--test-list' && rewritten === value) {
+      args.push(CONTAINER_TEST_LIST_PATH)
+      bindMounts.push(`${value}:${CONTAINER_TEST_LIST_PATH}:ro`)
+    } else {
+      if (flag === '--config' && rewritten === value) {
+        warn(`--config "${value}" is outside the project directory and will not resolve inside the container.`)
+      }
+      args.push(rewritten)
+    }
+  }
+  return { args, bindMounts }
 }
 
 /** Reads the installed `@playwright/test` version from cwd; null when unresolvable (→ positional fallback). */

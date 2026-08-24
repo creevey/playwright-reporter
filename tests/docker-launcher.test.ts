@@ -31,6 +31,7 @@ function makeLauncher(overrides: Partial<Parameters<typeof createDockerLauncher>
     getPlaywrightVersion: () => '1.59.0',
     env: {},
     containerName: 'test-container',
+    platform: 'linux',
     exec,
     ...overrides,
   })
@@ -117,6 +118,45 @@ describe('DockerLauncher.prepare', () => {
     daemonUp = true
     await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
     expect(launcher.available).toBe(true)
+  })
+
+  test('warns once about experimental support on a native Windows host', async () => {
+    const warnings: string[] = []
+    const { launcher } = makeLauncher({ platform: 'win32', warn: (m) => warnings.push(m) })
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('experimental')
+    expect(warnings[0]).toContain('WSL2')
+  })
+
+  test('does not warn on POSIX hosts', async () => {
+    const warnings: string[] = []
+    const { launcher } = makeLauncher({ platform: 'linux', warn: (m) => warnings.push(m) })
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    expect(warnings).toHaveLength(0)
+  })
+
+  test('re-warns once after a failed prepare resets state', async () => {
+    const warnings: string[] = []
+    let daemonUp = false
+    const exec: DockerExec = (args) => {
+      if (args[0] === 'info') return Promise.resolve(daemonUp ? ok : fail)
+      return Promise.resolve(ok)
+    }
+    const launcher = createDockerLauncher({
+      port: 3000,
+      getPlaywrightVersion: () => '1.59.0',
+      env: {},
+      containerName: 'c',
+      exec,
+      platform: 'win32',
+      warn: (m) => warnings.push(m),
+    })
+    await rejectionOf(launcher.prepare!({ ctx: CTX, onProgress: noopProgress }))
+    daemonUp = true
+    await launcher.prepare!({ ctx: CTX, onProgress: noopProgress })
+    expect(warnings).toHaveLength(2)
   })
 })
 

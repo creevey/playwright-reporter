@@ -7,10 +7,11 @@ import {
   pullDockerImage,
   resolveContainerCommand,
   resolveDockerImage,
-  rewriteContainerPath,
+  rewritePlaywrightArgs,
   DEFAULT_CONTAINER_COMMAND,
   type DetectAgent,
   type DockerExec,
+  type Warn,
 } from './docker-support.ts'
 import type { RunContext } from './run-controller.ts'
 import { resolvePlaywrightVersion } from './run-controller.ts'
@@ -21,17 +22,12 @@ export const DOCKER_WORK_DIR = '/work'
 /** Module-private: only the arg vector and server URL built here use it. */
 const DOCKER_HOST_GATEWAY = 'host.docker.internal'
 
-/** Module-private: fixed container-side target for the host `--test-list` tmpfile mount. */
-const CONTAINER_TEST_LIST_PATH = '/tmp/crvy-rprtr-test-list.txt'
-
 export interface DockerOptions {
   image?: string
   platform?: 'linux/amd64' | 'linux/arm64'
   command?: string[]
   extraArgs?: string[]
 }
-
-type Warn = (message: string) => void
 
 export interface DockerLauncherOptions {
   port: number
@@ -43,6 +39,8 @@ export interface DockerLauncherOptions {
   containerName?: string
   workDir?: string
   warn?: Warn
+  /** Injectable host-platform seam for tests; defaults to process.platform. */
+  platform?: NodeJS.Platform
 }
 
 /** Never propagated into the container: host-specific or launcher-pinned values. */
@@ -69,6 +67,7 @@ interface LauncherState {
   prepared: Promise<void> | null
   image: string | null
   command: readonly string[]
+  warnedWin32: boolean
 }
 
 interface PrepareDeps {
@@ -76,6 +75,7 @@ interface PrepareDeps {
   getPlaywrightVersion: (cwd: string) => string | null
   detectAgent?: DetectAgent
   warn: Warn
+  platform: NodeJS.Platform
 }
 
 interface LaunchDeps {
@@ -105,6 +105,12 @@ async function prepareDocker(
   deps: PrepareDeps,
   onProgress: (phase: string) => void,
 ): Promise<void> {
+  if (deps.platform === 'win32' && !state.warnedWin32) {
+    state.warnedWin32 = true
+    deps.warn(
+      'Native Windows host detected: docker run mode is experimental on this platform. For CI-identical baselines, run crvy-rprtr from WSL2 with the project stored in the WSL filesystem.',
+    )
+  }
   if (!(await probeDockerDaemon(exec))) {
     state.available = false
     throw new DockerUnavailableError()
@@ -130,55 +136,6 @@ async function prepareDocker(
       throw new Error(`Failed to pull docker image: ${image}`)
     }
   }
-}
-
-/** Bare specifier substituted when `--reporter` resolved outside the project on the host. */
-const REPORTER_BARE_SPECIFIER = '@crvy/rprtr'
-
-/** Module-private: path-valued playwright arg flags emitted by run-controller in space-separated form. */
-const PATH_FLAGS = new Set(['--config', '--reporter', '--test-list'])
-
-interface RewrittenArgs {
-  args: string[]
-  /** Extra `-v <path>:<path>:ro` host paths (e.g. host tmpdir files) the container must see verbatim. */
-  bindMounts: string[]
-}
-
-/**
- * Module-private: translates host paths in playwright args so they resolve inside the container.
- * - `--config` / `--reporter` under ctx.cwd → `${workDir}/...`.
- * - `--reporter` outside ctx.cwd (resolved from the server's own package) → bare `@crvy/rprtr`.
- * - `--test-list` outside ctx.cwd (host tmpdir) → fixed container path (`CONTAINER_TEST_LIST_PATH`), plus a read-only bind mount of the host file onto it.
- * - `--config` outside ctx.cwd → value unchanged plus a warning (the container cannot see it).
- * Equals-form (`--flag=value`) and dangling trailing flags are NOT rewritten; run-controller emits pairs only.
- */
-function rewritePlaywrightArgs(playwrightArgs: string[], ctx: RunContext, workDir: string, warn: Warn): RewrittenArgs {
-  const args: string[] = []
-  const bindMounts: string[] = []
-  for (let i = 0; i < playwrightArgs.length; i++) {
-    const flag = playwrightArgs[i]!
-    if (!PATH_FLAGS.has(flag)) {
-      args.push(flag)
-      continue
-    }
-    const value = playwrightArgs[i + 1]
-    if (value === undefined) break
-    i += 1
-    args.push(flag)
-    const rewritten = rewriteContainerPath(value, { from: ctx.cwd, to: workDir })
-    if (flag === '--reporter' && rewritten === value) {
-      args.push(REPORTER_BARE_SPECIFIER)
-    } else if (flag === '--test-list' && rewritten === value) {
-      args.push(CONTAINER_TEST_LIST_PATH)
-      bindMounts.push(`${value}:${CONTAINER_TEST_LIST_PATH}:ro`)
-    } else {
-      if (flag === '--config' && rewritten === value) {
-        warn(`--config "${value}" is outside the project directory and will not resolve inside the container.`)
-      }
-      args.push(rewritten)
-    }
-  }
-  return { args, bindMounts }
 }
 
 function buildDockerRunArgs(ctx: RunContext, playwrightArgs: string[], deps: LaunchDeps): string[] {
@@ -229,12 +186,19 @@ interface LauncherDeps {
   getVersion: (cwd: string) => string | null
   detectAgent: DetectAgent | undefined
   warn: Warn
+  platform: NodeJS.Platform
   docker?: DockerOptions
   port: number
 }
 
 function createState(docker?: DockerOptions): LauncherState {
-  return { available: undefined, prepared: null, image: null, command: docker?.command ?? DEFAULT_CONTAINER_COMMAND }
+  return {
+    available: undefined,
+    prepared: null,
+    image: null,
+    command: docker?.command ?? DEFAULT_CONTAINER_COMMAND,
+    warnedWin32: false,
+  }
 }
 
 function buildLauncher(state: LauncherState, deps: LauncherDeps): RunLauncher {
@@ -253,11 +217,13 @@ function buildLauncher(state: LauncherState, deps: LauncherDeps): RunLauncher {
           getPlaywrightVersion: deps.getVersion,
           detectAgent: deps.detectAgent,
           warn: deps.warn,
+          platform: deps.platform,
         },
         onProgress,
       ).catch((error: unknown) => {
         // Reset so a later run re-probes after the user fixes the problem.
         state.prepared = null
+        state.warnedWin32 = false
         throw error
       })
       return state.prepared
@@ -294,6 +260,7 @@ export function createDockerLauncher(options: DockerLauncherOptions): RunLaunche
     getVersion: options.getPlaywrightVersion ?? resolvePlaywrightVersion,
     detectAgent: options.detectAgent,
     warn: options.warn ?? defaultWarn,
+    platform: options.platform ?? process.platform,
     docker: options.docker,
     port: options.port,
   })
