@@ -140,3 +140,33 @@ describe('rewriteContainerPath', () => {
     expect(rewriteContainerPath('/workspace/x', mapping)).toBe('/workspace/x')
   })
 })
+
+describe('rewriteContainerPath — Windows hosts', () => {
+  const hostToContainer = { from: 'C:\\proj', to: '/work' }
+
+  test('rewrites backslash descendants of the project root', () => {
+    expect(rewriteContainerPath('C:\\proj\\pw.config.ts', hostToContainer)).toBe('/work/pw.config.ts')
+  })
+
+  test('rewrites the exact project root', () => {
+    expect(rewriteContainerPath('C:\\proj', hostToContainer)).toBe('/work')
+  })
+
+  test('rejects prefix lookalikes with backslashes', () => {
+    expect(rewriteContainerPath('C:\\proj2\\x.ts', hostToContainer)).toBe('C:\\proj2\\x.ts')
+  })
+
+  test('matches when only the drive-letter case differs', () => {
+    expect(rewriteContainerPath('c:\\proj\\tests\\x.ts', hostToContainer)).toBe('/work/tests/x.ts')
+  })
+
+  test('leaves unmatched paths verbatim (no normalization leakage)', () => {
+    expect(rewriteContainerPath('D:\\elsewhere\\x.ts', hostToContainer)).toBe('D:\\elsewhere\\x.ts')
+  })
+
+  test('container-to-host keeps the native `to` and appends the POSIX remainder', () => {
+    expect(rewriteContainerPath('/work/tests/x.spec.ts', { from: '/work', to: 'C:\\proj' })).toBe(
+      'C:\\proj/tests/x.spec.ts',
+    )
+  })
+})

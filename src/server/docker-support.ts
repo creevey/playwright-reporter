@@ -132,14 +132,25 @@ export interface ContainerPathMapping {
 }
 
 /**
- * Maps an absolute path from the container's mount namespace back to the host.
+ * Maps an absolute path between the container's mount namespace and the host.
  * Only exact matches and direct descendants of `mapping.from` are rewritten;
- * prefix lookalikes like `/workspace` are left untouched.
+ * prefix lookalikes like `/workspace` are left untouched. Matching is
+ * separator- and drive-letter-case-insensitive so Windows host paths
+ * (`C:\proj\...`) rewrite correctly; the normalized form feeds the rewritten
+ * remainder, but unmatched paths return verbatim so callers can detect
+ * "not rewritten" via `rewritten === value`.
  */
 export function rewriteContainerPath(path: string, mapping: ContainerPathMapping): string {
-  if (path === mapping.from) return mapping.to
-  if (path.startsWith(`${mapping.from}/`)) return mapping.to + path.slice(mapping.from.length)
+  const normalizedPath = normalizeForMatch(path)
+  const normalizedFrom = normalizeForMatch(mapping.from)
+  if (normalizedPath === normalizedFrom) return mapping.to
+  if (normalizedPath.startsWith(`${normalizedFrom}/`)) return mapping.to + normalizedPath.slice(normalizedFrom.length)
   return path
+}
+
+/** Module-private: matching-only normalization — the result is never emitted as a host path. */
+function normalizeForMatch(p: string): string {
+  return p.replace(/\\/g, '/').replace(/^[A-Z](?=:)/, (c) => c.toLowerCase())
 }
 
 /** Reads the installed `@playwright/test` version from cwd; null when unresolvable (→ positional fallback). */
