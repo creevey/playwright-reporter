@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-08-24
+
+### Added
+
+- **server:** Warn once that native Windows docker mode is experimental
+
+### Documentation
+
+- Windows OS support design spec (WSL2 recommended, native win32 experimental)
+- Windows OS support implementation plan
+- Recommend WSL2 on Windows, mark native win32 docker mode experimental
+- **server:** Refresh stale comments after docker-support extraction
+
+### Fixed
+
+- **server:** Separator-agnostic rewriteContainerPath for Windows hosts
+- **server:** Posix --test-list entries in docker mode
+- **server:** Mount --test-list tmpfile at a fixed container path
+- **server:** Keep host PATH and Windows env noise out of docker containers
 ## [0.3.0] - 2026-08-24
 
 ### Added
