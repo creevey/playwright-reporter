@@ -6,6 +6,10 @@ import type { NamedScreenshotDeclaration, ScreenshotDeclaration } from './report
 const DEFAULT_SCREENSHOT_TEMPLATE =
   '{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{arg}{-projectName}{-snapshotSuffix}{ext}'
 const WINDOWS_FILESYSTEM_FRIENDLY_LENGTH = 60
+// Playwright trims anonymous snapshot names with trimLongString's default limit
+// (lib/util.js), which is only used for the snapshot path itself. The 60-char
+// windowsFilesystemFriendlyLength applies to output artifacts, not baselines.
+const PLAYWRIGHT_SNAPSHOT_NAME_LIMIT = 100
 
 export interface SnapshotResolverConfig {
   readonly configDir: string
@@ -217,7 +221,11 @@ function reporterTitlesWithoutProjectAndFile(reporterTitlePath: readonly string[
 }
 
 function anonymousNameFromTitles(titles: readonly string[], occurrenceIndex: number): string {
-  return sanitizeFilePathBeforeExtension(trimLongString(`${titles.join(' ')} ${occurrenceIndex}.png`), '.png')
+  const fullTitleWithoutSpec = `${titles.join(' ')} ${occurrenceIndex}`
+  return sanitizeFilePathBeforeExtension(
+    `${trimLongString(fullTitleWithoutSpec, PLAYWRIGHT_SNAPSHOT_NAME_LIMIT)}.png`,
+    '.png',
+  )
 }
 
 function anonymousName(reporterTitlePath: readonly string[], occurrenceIndex: number): string {
