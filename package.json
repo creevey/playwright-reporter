@@ -83,7 +83,7 @@
   "devDependencies": {
     "@playwright/test": "1.59.0",
     "@tailwindcss/postcss": "^4.2.2",
-    "@types/bun": "latest",
+    "@types/bun": "^1.4.0",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.27.4",
     "esbuild-svelte": "^0.9.4",
@@ -102,7 +102,7 @@
     "@playwright/test": ">=1.40"
   },
   "engines": {
-    "bun": ">=1.0.0",
+    "bun": ">=1.4.0",
     "node": ">=22"
   }
 }
