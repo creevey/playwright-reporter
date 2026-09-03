@@ -90,6 +90,10 @@ When the server can resolve a Playwright config (via `--config` or auto-discover
 3. **In the browser:** The UI shows all screenshot tests with side-by-side, swap, slide, and blend diff views.
 4. **Approving changes:** Start the UI server and click "Approve" or "Approve All" to accept a new screenshot as the baseline. Approval uses the same exact Playwright-aware resolver as passed-baseline display, including default layouts, unnamed screenshots, duplicate names, and custom templates when the running server was started with matching resolver options. Those approval-routing options are read from the server startup path, not from reporter options. If the server starts without explicit resolver overrides, approval falls back to the server defaults instead. If Crvy Rprtr cannot determine exactly one target path, it leaves the image unresolved instead of guessing.
 
+## Component Testing
+
+Crvy Rprtr works with [Playwright Component Testing](https://playwright.dev/docs/test-components) (the stories + gallery model, Playwright ≥ 1.62) out of the box — component tests are regular Playwright tests, so live reporting, baseline display, diffs, approval, and Docker mode all work unchanged. See the complete, annotated example in [examples/component-testing](./examples/component-testing).
+
 ## Offline Mode
 
 When the server isn't running during tests, the reporter automatically falls back to offline mode:

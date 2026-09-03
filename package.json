@@ -69,6 +69,7 @@
     "check": "./scripts/check.sh",
     "check:staged": "./scripts/check.sh --staged",
     "example": "cd examples/playwright && bunx playwright test",
+    "example:ct": "cd examples/component-testing && bunx playwright test",
     "changelog:preview": "git-cliff --dry-run",
     "changelog:generate": "git-cliff -o CHANGELOG.md",
     "prepublishOnly": "bun run build && bunx publint",

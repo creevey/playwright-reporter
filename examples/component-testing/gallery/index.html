@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Story gallery</title>
+    <style>
+      /* Stands in for your app's global stylesheet: stories render with the
+         same CSS the real app entry loads. No transitions or animations, so
+         screenshot baselines stay deterministic. */
+      body {
+        margin: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        color: #111827;
+      }
+
+      /* The rendering root the `mount` fixture points at. */
+      #root {
+        display: inline-block;
+        padding: 16px;
+      }
+
+      .cvy-button {
+        padding: 12px 24px;
+        font: inherit;
+        font-size: 16px;
+        font-weight: 500;
+        color: #fff;
+        background: #2563eb;
+        border: 2px solid #2563eb;
+        border-radius: 8px;
+        transition: none;
+      }
+
+      .cvy-button--danger {
+        background: #dc2626;
+        border-color: #dc2626;
+      }
+
+      .cvy-button:disabled {
+        background: #9ca3af;
+        border-color: #9ca3af;
+        cursor: not-allowed;
+        opacity: 0.7;
+      }
+
+      .cvy-expandable {
+        width: 320px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .cvy-expandable__header {
+        display: block;
+        width: 100%;
+        padding: 12px 16px;
+        font: inherit;
+        font-size: 16px;
+        font-weight: 500;
+        text-align: left;
+        color: #111827;
+        background: #f9fafb;
+        border: 0;
+        transition: none;
+      }
+
+      .cvy-expandable__body {
+        padding: 12px 16px;
+        font-size: 14px;
+        border-top: 2px solid #e5e7eb;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./gallery.js"></script>
+  </body>
+</html>
